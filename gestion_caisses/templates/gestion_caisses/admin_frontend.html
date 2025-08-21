@@ -1,0 +1,405 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+
+{% block title %}Tableau de Bord Admin — Rapports{% endblock %}
+
+{% block content %}
+<div class="container p-4">
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+                    <div>
+                        <label class="form-label">Type de rapport</label>
+                        <select id="typeRapport" class="form-select form-select-sm">
+                            <option value="general">Général</option>
+                            <option value="financier">Financier</option>
+                            <option value="prets">Prêts</option>
+                            <option value="membres">Membres</option>
+                            <option value="echeances">Échéances</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Caisse (optionnel)</label>
+                        <select id="caisseSelect" class="form-select form-select-sm">
+                            <option value="">Toutes Caisses (Global)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Date début</label>
+                        <input id="dateDebut" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div>
+                        <label class="form-label">Date fin</label>
+                        <input id="dateFin" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div class="ms-auto d-flex gap-2">
+                        <button id="btnCharger" class="btn btn-primary btn-sm"><i class="fa fa-chart-line me-1"></i>Charger</button>
+                        <button id="btnPdf" class="btn btn-success btn-sm"><i class="fa fa-file-pdf me-1"></i>PDF</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div id="alertBox" class="alert d-none" role="alert"></div>
+        </div>
+
+        <!-- Synthèse -->
+        <div class="col-12">
+            <div class="row g-3" id="summaryRow"></div>
+        </div>
+
+        <!-- Graphique -->
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h6 class="mb-3">Visualisation</h6>
+                    <canvas id="adminChart" height="110"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Détails -->
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body" id="detailContainer">
+                    <h6 class="mb-3">Détails</h6>
+                    <div id="details"></div>
+                    <hr/>
+                    <details>
+                        <summary class="small text-muted">Voir le JSON (debug)</summary>
+                        <pre id="jsonResult" class="bg-light p-3 rounded mt-2" style="max-height: 420px; overflow:auto;"></pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let chartRef = null;
+
+    async function fetchRapport() {
+        const type = document.getElementById('typeRapport').value;
+        const caisseId = document.getElementById('caisseSelect').value.trim();
+        const d1 = document.getElementById('dateDebut').value;
+        const d2 = document.getElementById('dateFin').value;
+        const params = new URLSearchParams({ type });
+        if (d1) params.append('date_debut', d1);
+        if (d2) params.append('date_fin', d2);
+        if (!caisseId) {
+            const resp = await fetch(`/gestion-caisses/api/rapports-global/?${params}`);
+            return resp;
+        }
+        // Rapports par caisse via l'API existante
+        const url = `/gestion-caisses/api/rapports-caisse/?${params}&caisse_id=${encodeURIComponent(caisseId)}`;
+        return fetch(url);
+    }
+
+    function showAlert(msg, cls='alert-danger') {
+        const box = document.getElementById('alertBox');
+        box.textContent = msg;
+        box.className = `alert ${cls}`;
+    }
+
+    function clearUI() {
+        document.getElementById('summaryRow').innerHTML = '';
+        document.getElementById('details').innerHTML = '';
+        if (chartRef) { chartRef.destroy(); chartRef = null; }
+    }
+
+    function addCard(container, title, value, icon) {
+        const col = document.createElement('div');
+        col.className = 'col-12 col-sm-6 col-lg-3';
+        col.innerHTML = `
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <div class="text-primary" style="font-size:22px"><i class="fa ${icon}"></i></div>
+                    <div>
+                        <div class="text-muted small">${title}</div>
+                        <div class="fw-bold" style="font-size:18px">${value}</div>
+                    </div>
+                </div>
+            </div>`;
+        container.appendChild(col);
+    }
+
+    function n(v) { try { return (typeof v === 'number') ? v : parseFloat(v || 0); } catch { return 0; } }
+    function f(v) { return new Intl.NumberFormat('fr-FR').format(n(v)); }
+
+    function renderGeneral(data) {
+        const wrap = document.getElementById('summaryRow');
+        const membres = data.membres || {};
+        const prets = data.prets || {};
+        const fonds = data.fonds || {};
+        const retard = (data.echeances_retard && (data.echeances_retard.nombre || data.echeances_retard.total_echeances_retard)) || 0;
+
+        addCard(wrap, 'Membres actifs', f(membres.actifs || membres.total || 0), 'fa-users');
+        addCard(wrap, 'Prêts (total)', f(prets.total || 0), 'fa-hand-holding-dollar');
+        addCard(wrap, 'Prêts en cours', f(prets.en_cours || 0), 'fa-hourglass-half');
+        addCard(wrap, 'Fonds disponibles', f(fonds.fond_disponible || fonds.solde_disponible || 0) + ' FCFA', 'fa-sack-dollar');
+
+        // Camembert répartition prêts
+        const ctx = document.getElementById('adminChart').getContext('2d');
+        const labels = ['En cours', 'Remboursés'];
+        const values = [n(prets.en_cours || 0), n(prets.rembourses || 0)];
+        chartRef = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data: values, backgroundColor: ['#2E86AB','#28A745'] }]},
+            options: { plugins: { legend: { position: 'bottom' }}} 
+        });
+
+        // Détails
+        const details = document.getElementById('details');
+        details.innerHTML = `
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <h6>Membres</h6>
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item">Total: <strong>${f(membres.total || 0)}</strong></li>
+                        <li class="list-group-item">Actifs: <strong>${f(membres.actifs || 0)}</strong></li>
+                        <li class="list-group-item">Femmes: <strong>${f(membres.femmes || 0)}</strong></li>
+                        <li class="list-group-item">Hommes: <strong>${f(membres.hommes || 0)}</strong></li>
+                    </ul>
+                </div>
+                <div class="col-12 col-md-6">
+                    <h6>Fonds</h6>
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item">Fond initial: <strong>${f(fonds.fond_initial || 0)} FCFA</strong></li>
+                        <li class="list-group-item">Fond disponible: <strong>${f(fonds.fond_disponible || fonds.solde_disponible || 0)} FCFA</strong></li>
+                        <li class="list-group-item">Prêts en retard: <strong>${f(retard)}</strong></li>
+                    </ul>
+                </div>
+            </div>`;
+    }
+
+    function renderFinancier(data) {
+        const wrap = document.getElementById('summaryRow');
+        const fonds = data.fonds_actuels || {};
+        addCard(wrap, 'Fond initial', f(fonds.fond_initial || 0) + ' FCFA', 'fa-piggy-bank');
+        addCard(wrap, 'Fond disponible', f(fonds.fond_disponible || 0) + ' FCFA', 'fa-sack-dollar');
+        addCard(wrap, 'Montant total prêts', f(fonds.montant_total_prets || 0) + ' FCFA', 'fa-file-invoice-dollar');
+        addCard(wrap, 'Solde disponible', f(fonds.solde_disponible || 0) + ' FCFA', 'fa-scale-balanced');
+
+        const stats = (data.mouvements && data.mouvements.stats_par_type) || [];
+        const labels = stats.map(s => s.type_mouvement || s.type || '');
+        const values = stats.map(s => n(s.total || 0));
+        const ctx = document.getElementById('adminChart').getContext('2d');
+        chartRef = new Chart(ctx, {
+            type: 'bar',
+            data: { labels, datasets: [{ label: 'Montants', data: values, backgroundColor: '#2E86AB' }]},
+            options: { plugins: { legend: { display: false }}, scales: { y: { beginAtZero: true }}}
+        });
+
+        const details = document.getElementById('details');
+        let rows = stats.map(s => `<tr><td>${s.type_mouvement}</td><td class="text-end">${f(s.total)}</td><td class="text-end">${f(s.nombre || 0)}</td></tr>`).join('');
+        let parCaisse = '';
+        if (Array.isArray(data.par_caisse)) {
+            parCaisse = data.par_caisse.map(c => `
+                <tr>
+                    <td>${(c.code || '') + ' ' + (c.nom || '')}</td>
+                    <td class="text-end">${f(c.fond_initial || 0)}</td>
+                    <td class="text-end">${f(c.fond_disponible || 0)}</td>
+                    <td class="text-end">${f(c.montant_total_prets || 0)}</td>
+                    <td class="text-end">${f(c.solde_disponible || 0)}</td>
+                </tr>
+            `).join('');
+        }
+        const pf = data.prets_financiers || {};
+        const oct = pf.octroyes_total || 0;
+        const rem = pf.rembourses_total || 0;
+        details.innerHTML = `
+            <h6>Synthèse par caisse</h6>
+            <div class="table-responsive mb-3">
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Caisse</th><th class="text-end">Fond initial</th><th class="text-end">Fond dispo</th><th class="text-end">Prêts total</th><th class="text-end">Solde dispo</th></tr>
+                    </thead>
+                    <tbody>${parCaisse || '<tr><td colspan="5" class="text-muted">(aucune donnée)</td></tr>'}</tbody>
+                </table>
+            </div>
+            <div class="mb-3"><strong>Prêts octroyés:</strong> ${f(oct)} FCFA — <strong>Remboursés:</strong> ${f(rem)} FCFA</div>
+            <h6>Répartition des mouvements</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Type</th><th class="text-end">Montant total</th><th class="text-end">Nombre</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderPrets(data) {
+        const wrap = document.getElementById('summaryRow');
+        const stats = data.statistiques || {};
+        const retard = (data.prets_retard && data.prets_retard.nombre) || 0;
+        addCard(wrap, 'Prêts en retard', f(retard), 'fa-triangle-exclamation');
+        const parStatut = stats.par_statut || [];
+        const labels = parStatut.map(s => s.statut);
+        const values = parStatut.map(s => n(s.nombre || 0));
+        const ctx = document.getElementById('adminChart').getContext('2d');
+        chartRef = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Prêts', data: values, backgroundColor: '#6f42c1' }]}, options: { plugins: { legend: { display: false }}, scales: { y: { beginAtZero: true }}}});
+        const details = document.getElementById('details');
+        let rows = parStatut.map(s => `<tr><td>${s.statut}</td><td class="text-end">${f(s.nombre)}</td><td class="text-end">${f(s.montant_total || 0)}</td></tr>`).join('');
+        details.innerHTML = `
+            <h6>Prêts par statut</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Statut</th><th class="text-end">Nombre</th><th class="text-end">Montant total</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderMembres(data) {
+        const wrap = document.getElementById('summaryRow');
+        const stats = data.statistiques || {};
+        const parStatut = stats.par_statut || [];
+        const parSexe = stats.par_sexe || [];
+        addCard(wrap, 'Membres (total)', f((data.details_membres && data.details_membres.length) || 0), 'fa-users');
+        const labels = parSexe.map(s => s.sexe);
+        const values = parSexe.map(s => n(s.nombre || 0));
+        const ctx = document.getElementById('adminChart').getContext('2d');
+        chartRef = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Membres',
+                    data: values,
+                    backgroundColor: ['#0d6efd', '#ffc107'],
+                }]
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+        const details = document.getElementById('details');
+        let rows = parStatut.map(s => `<tr><td>${s.statut}</td><td class=\"text-end\">${f(s.nombre)}</td></tr>`).join('');
+        // Tableau des membres (global: toutes caisses; par caisse: déjà filtré côté API)
+        let membresRows = '';
+        const membres = (data.details_membres_full || data.details_membres || []);
+        if (Array.isArray(membres)) {
+            membresRows = membres.map(m => `
+                <tr>
+                    <td>${m.caisse_nom || m.caisse || ''}</td>
+                    <td>${m.nom_complet || ''}</td>
+                    <td>${m.role || ''}</td>
+                    <td>${m.statut || ''}</td>
+                    <td>${m.numero_telephone || m.telephone || ''}</td>
+                </tr>
+            `).join('');
+        }
+        details.innerHTML = `
+            <h6>Membres par statut</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Statut</th><th class="text-end">Nombre</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <h6 class="mt-3">Liste complète des membres (triée par caisse)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Caisse</th><th>Nom complet</th><th>Rôle</th><th>Statut</th><th>Téléphone</th></tr></thead>
+                    <tbody>${membresRows || '<tr><td colspan="5" class="text-muted">(aucun membre)</td></tr>'}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderEcheances(data) {
+        const wrap = document.getElementById('summaryRow');
+        const stats = data.statistiques || {};
+        addCard(wrap, 'Échéances (total)', f(stats.total_echeances || 0), 'fa-calendar-days');
+        addCard(wrap, 'Montant total', f(stats.total_montant || 0) + ' FCFA', 'fa-money-bill-wave');
+        addCard(wrap, 'Montant payé', f(stats.total_paye || 0) + ' FCFA', 'fa-circle-check');
+        const parStatut = stats.par_statut || [];
+        const labels = parStatut.map(s => s.statut);
+        const values = parStatut.map(s => n(s.nombre || 0));
+        const ctx = document.getElementById('adminChart').getContext('2d');
+        chartRef = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Échéances', data: values, backgroundColor: '#198754' }]}, options: { plugins: { legend: { display: false }}, scales: { y: { beginAtZero: true }}}});
+        const details = document.getElementById('details');
+        let rows = parStatut.map(s => `<tr><td>${s.statut}</td><td class="text-end">${f(s.nombre)}</td><td class="text-end">${f(s.montant_total || 0)}</td></tr>`).join('');
+        details.innerHTML = `
+            <h6>Échéances par statut</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Statut</th><th class="text-end">Nombre</th><th class="text-end">Montant</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    document.getElementById('btnCharger').addEventListener('click', async () => {
+        try {
+            clearUI();
+            const resp = await fetchRapport();
+            if (!resp.ok) {
+                const txt = await resp.text();
+                showAlert(`Erreur: ${txt}`);
+                return;
+            }
+            const data = await resp.json();
+            document.getElementById('jsonResult').textContent = JSON.stringify(data, null, 2);
+            showAlert('Rapport chargé', 'alert-success');
+
+            // Rendu dynamique selon le type
+            const t = document.getElementById('typeRapport').value;
+            if (t === 'general') return renderGeneral(data);
+            if (t === 'financier') return renderFinancier(data);
+            if (t === 'prets') return renderPrets(data);
+            if (t === 'membres') return renderMembres(data);
+            if (t === 'echeances') return renderEcheances(data);
+        } catch (e) {
+            showAlert(`Erreur de chargement: ${e}`);
+        }
+    });
+
+    document.getElementById('btnPdf').addEventListener('click', () => {
+        const type = document.getElementById('typeRapport').value;
+        const caisseId = document.getElementById('caisseSelect').value.trim();
+        const d1 = document.getElementById('dateDebut').value;
+        const d2 = document.getElementById('dateFin').value;
+        const params = new URLSearchParams({ type });
+        if (d1) params.append('date_debut', d1);
+        if (d2) params.append('date_fin', d2);
+        if (caisseId) params.append('caisse_id', caisseId);
+        window.location.href = `/gestion-caisses/api/rapport-pdf/?${params}`;
+    });
+
+    // Charger la liste des caisses
+    (async function loadCaisses() {
+        try {
+            const sel = document.getElementById('caisseSelect');
+            // On récupère via l'API REST; le routeur DRF peut être paginé
+            let url = '/gestion-caisses/api/caisses/';
+            let all = [];
+            while (url) {
+                const r = await fetch(url);
+                if (!r.ok) break;
+                const data = await r.json();
+                if (Array.isArray(data)) {
+                    all = data;
+                    url = null;
+                } else {
+                    all = all.concat(data.results || []);
+                    url = data.next;
+                }
+            }
+            all.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.code || ''} ${c.nom_association || ''}`.trim();
+                sel.appendChild(opt);
+            });
+        } catch (e) {
+            // silencieux: le champ restera sur Global
+        }
+    })();
+</script>
+{% endblock %}
+
+

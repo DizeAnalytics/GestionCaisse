@@ -1,0 +1,225 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content_title %}
+    <h1>📊 Dashboard d'Administration - Gestion des Caisses de Femmes</h1>
+{% endblock %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+{% endblock %}
+
+{% block content %}
+    <!-- Actions rapides -->
+    <div class="module" style="margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <a class="button" href="/adminsecurelogin/gestion_caisses/pret/" style="background:#6f42c1;color:#fff;border:none;">📄 Prêts</a>
+            <a class="button" href="/adminsecurelogin/gestion_caisses/caisse/" style="background:#2E86AB;color:#fff;border:none;">🏦 Caisses</a>
+            <a class="button" href="/adminsecurelogin/gestion_caisses/notification/" style="background:#ff8f00;color:#fff;border:none;">🔔 Notifications</a>
+            <a class="button" href="/gestion-caisses/guide-application.pdf" style="background:#2e7d32;color:#fff;border:none;">📘 Guide PDF</a>
+        </div>
+    </div>
+    <!-- Statistiques principales -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>💰 Vue d'Ensemble Financière</h2>
+        <div class="hscroll" style="margin: 20px 0;">
+            
+            <!-- Fonds disponibles -->
+            <div class="kpi-card" style="background: linear-gradient(135deg, #4CAF50, #45a049); color: white;">
+                <h3 style="margin: 0; font-size: 16px;">Fonds Disponibles</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_fonds_disponibles|floatformat:0 }} FCFA</p>
+                <small>Total de toutes les caisses</small>
+            </div>
+            
+            <!-- Fonds initiaux -->
+            <div class="kpi-card" style="background: linear-gradient(135deg, #2196F3, #1976D2); color: white;">
+                <h3 style="margin: 0; font-size: 16px;">Fonds Initiaux</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_fonds_initiaux|floatformat:0 }} FCFA</p>
+                <small>Capital initial investi</small>
+            </div>
+            
+            <!-- Fonds remboursés -->
+            <div class="kpi-card" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: white;">
+                <h3 style="margin: 0; font-size: 16px;">Fonds Remboursés</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_fonds_rembourses|floatformat:0 }} FCFA</p>
+                <small>Total des remboursements</small>
+            </div>
+            
+            <!-- Taux d'utilisation -->
+            <div class="kpi-card" style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); color: white;">
+                <h3 style="margin: 0; font-size: 16px;">Taux d'Utilisation</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ pourcentage_utilisation|floatformat:1 }}%</p>
+                <small>Fonds utilisés / Fonds initiaux</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques des prêts -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📈 Statistiques des Prêts</h2>
+        <div class="hscroll" style="margin: 15px 0;">
+            
+            <!-- Total des prêts -->
+            <div class="kpi-card" style="background:#e3f2fd;">
+                <h3 style="margin: 0; color: #1976d2;">Total des Prêts</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #1976d2;">{{ total_prets }}</p>
+                <small>Nombre total de prêts accordés</small>
+            </div>
+            
+            <!-- Prêts en cours -->
+            <div class="kpi-card" style="background:#fff3e0;">
+                <h3 style="margin: 0; color: #f57c00;">Prêts en Cours</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #f57c00;">{{ prets_en_cours }}</p>
+                <small>Prêts actuellement octroyés</small>
+            </div>
+            
+            <!-- Prêts remboursés -->
+            <div class="kpi-card" style="background:#e8f5e8;">
+                <h3 style="margin: 0; color: #388e3c;">Prêts Remboursés</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #388e3c;">{{ prets_rembourses }}</p>
+                <small>Prêts entièrement remboursés</small>
+            </div>
+            
+            <!-- Prêts en retard -->
+            <div class="kpi-card" style="background:#ffebee;">
+                <h3 style="margin: 0; color: #d32f2f;">Prêts en Retard</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #d32f2f;">{{ prets_en_retard }}</p>
+                <small>Échéances dépassées</small>
+            </div>
+        </div>
+        
+        <!-- Montants des prêts -->
+        <div class="hscroll" style="margin: 20px 0;">
+            <div class="kpi-card" style="background:#f3e5f5;">
+                <h3 style="margin: 0; color: #7b1fa2;">Montant Total Accordé</h3>
+                <p style="font-size: 18px; font-weight: bold; margin: 5px 0; color: #7b1fa2;">{{ total_montant_prets|floatformat:0 }} FCFA</p>
+            </div>
+            
+            <div class="kpi-card" style="background:#e0f2f1;">
+                <h3 style="margin: 0; color: #00695c;">Montant Remboursé</h3>
+                <p style="font-size: 18px; font-weight: bold; margin: 5px 0; color: #00695c;">{{ total_montant_rembourse|floatformat:0 }} FCFA</p>
+            </div>
+            
+            <div class="kpi-card" style="background:#fff8e1;">
+                <h3 style="margin: 0; color: #f57f17;">Montant Restant</h3>
+                <p style="font-size: 18px; font-weight: bold; margin: 5px 0; color: #f57f17;">{{ total_montant_restant|floatformat:0 }} FCFA</p>
+            </div>
+            
+            <div class="kpi-card" style="background:#e8eaf6;">
+                <h3 style="margin: 0; color: #3f51b5;">Taux de Remboursement</h3>
+                <p style="font-size: 18px; font-weight: bold; margin: 5px 0; color: #3f51b5;">{{ taux_remboursement|floatformat:1 }}%</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques par région -->
+    <div class="two-col">
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>🗺️ Statistiques par Région</h2>
+        <div style="overflow-x: auto;">
+            <table class="table-modern" style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <div style="overflow-x: auto;">
+            <table class="table-modern" style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Région</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Nombre de Caisses</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Total des Fonds</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Total des Prêts</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Prêts Actifs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for region in stats_par_region %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px; border: 1px solid #ddd;"><strong>{{ region.region__nom|default:"Non définie" }}</strong></td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.nombre_caisses }}</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.total_fonds|floatformat:0 }} FCFA</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.total_prets }}</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.prets_actifs }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📝 Activité Récente</h2>
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for action in actions_recentes %}
+            <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong>{{ action.utilisateur.username|default:"Utilisateur Anonyme" }}</strong>
+                    <span style="color: #666;">{{ action.action|lower }} {{ action.modele|lower }}</span>
+                    {% if action.objet_id %}
+                    <span style="color: #999;">#{{ action.objet_id }}</span>
+                    {% endif %}
+                </div>
+                <small style="color: #999;">{{ action.date_action|date:"d/m/Y H:i" }}</small>
+            </div>
+            {% empty %}
+            <p style="text-align: center; color: #666; padding: 20px;">Aucune activité récente</p>
+            {% endfor %}
+        </div>
+    </div>
+    </div>
+
+    <!-- Activité récente -->
+    
+
+    <!-- Informations générales -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📊 Informations Générales</h2>
+        <div class="hscroll" style="margin: 15px 0;">
+            <div class="kpi-card" style="background:#e8f5e8;">
+                <h3 style="margin: 0; color: #388e3c;">Nombre de Caisses</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #388e3c;">{{ nombre_caisses }}</p>
+            </div>
+            
+            <div class="kpi-card" style="background:#e3f2fd;">
+                <h3 style="margin: 0; color: #1976d2;">Nombre d'Agents</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #1976d2;">{{ nombre_agents }}</p>
+            </div>
+            
+            <div class="kpi-card" style="background:#fff3e0;">
+                <h3 style="margin: 0; color: #f57c00;">Nombre de Membres</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 5px 0; color: #f57c00;">{{ nombre_membres }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des caisses (interface standard) -->
+    <div class="module">
+        <h2>🏦 Liste des Caisses</h2>
+        {{ block.super }}
+    </div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .hscroll {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(240px, 1fr);
+    gap: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 1100px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+  .kpi-card {
+    padding: 18px; border-radius: 12px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.05);
+  }
+  .table-modern thead tr { background: linear-gradient(135deg,#f5f5f5,#e0e0e0); }
+  .table-modern th, .table-modern td { padding: 12px; border: 1px solid #ddd; }
+  .table-modern tbody tr:nth-child(even){ background:#fafafa; }
+</style>
+{% endblock %}

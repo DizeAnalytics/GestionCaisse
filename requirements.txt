@@ -1,0 +1,30 @@
+# Django et DRF
+Django==5.2.5
+djangorestframework==3.16.1
+django-cors-headers==4.7.0
+django-filter==25.1
+django-jazzmin
+
+# Base de données
+psycopg2-binary==2.9.10
+
+# Configuration et sécurité
+python-decouple==3.8
+
+# Utilitaires
+Pillow==10.4.0  # Pour la gestion des images
+python-dateutil==2.8.2
+reportlab==4.4.3  # Pour la génération de PDF
+
+# Développement (optionnel)
+django-debug-toolbar==4.3.0
+django-extensions==3.2.3
+
+# Tests (optionnel)
+pytest==8.0.0
+pytest-django==4.8.0
+factory-boy==3.3.0
+
+# Production (optionnel)
+gunicorn==21.2.0
+whitenoise==6.6.0

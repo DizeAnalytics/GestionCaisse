@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.swp
+*.log
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+logs/
+
+# Environment files
+.env
+.env.*
+config.env
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Tests / Coverage
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Outputs / Artifacts
+full_database.sql
+schema_only.sql
+deployment_guide.pdf
+
+# Docker / Local certs
+ssl/
+postgres_data/
+redis_data/
+

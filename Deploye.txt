@@ -1,0 +1,33 @@
+Options fiables en Afrique (Django + Postgres + Redis)
+AWS (Cape Town, af-south-1):
+Points forts: services managés (RDS Postgres, ElastiCache Redis, S3, CloudFront), écosystème mature.
+Idéal si vos utilisateurs sont surtout Afrique australe/est. Latence correcte depuis l’Afrique de l’Ouest avec CDN.
+Microsoft Azure (South Africa North/West – Johannesburg/Cape Town; West Africa – Lagos):
+Points forts: région Lagos pour l’Afrique de l’Ouest (meilleure latence Togo/Benin/Ghana), Postgres managé et Redis managé.
+Bon choix si votre audience est majoritairement en Afrique de l’Ouest.
+Google Cloud (Johannesburg, africa-south1):
+Points forts: stack gérée (Cloud SQL Postgres, Cloud Storage). Vérifier la disponibilité des services exacts dans la région.
+Akamai/Linode (Johannesburg) et Vultr (Johannesburg):
+Points forts: VPS à coût réduit, latence basse en Afrique australe; proposent bases managées et object storage.
+Moins d’options “entreprise” qu’AWS/Azure.
+xneelo (Afrique du Sud):
+Points forts: hébergeur local, bonne latence en Afrique australe.
+Moins de services managés; à privilégier si besoin strict de localisation.
+Recommandation rapide (pour usage Togo/Afrique de l’Ouest)
+
+Recommandation rapide (pour usage Togo/Afrique de l’Ouest)
+Choix 1: Azure West Africa (Lagos) pour la meilleure latence, avec:
+VM Ubuntu 22.04 (2 vCPU, 4–8 Go RAM) pour Django + Gunicorn + Nginx
+Azure Database for PostgreSQL (Flexible Server)
+Azure Cache for Redis
+Azure Blob Storage pour médias + CDN
+Choix 2: AWS Cape Town si vous préférez AWS:
+EC2 t3.small/t3.medium, RDS Postgres, ElastiCache Redis, S3 (+ CloudFront)
+Tailles de départ
+Petit trafic (≤500 utilisateurs actifs): 2 vCPU / 4 Go RAM (app), Postgres 2 vCPU / 4 Go RAM, Redis 1–2 Go, SSD 50–100 Go.
+Moyen (≤5k): 4 vCPU / 8 Go RAM (app), Postgres 2–4 vCPU / 8–16 Go, Redis 2–4 Go.
+Bonnes pratiques
+Mettre médias sur objet storage + CDN.
+Activer HTTPS (Let’s Encrypt ou CDN), WAF/CDN (Cloudflare/CloudFront).
+Backups quotidiens DB + snapshots; monitoring (logs/metrics) et alertes.
+Garder DB et Redis en privé (VPC), n’exposer que Nginx.

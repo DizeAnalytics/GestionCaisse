@@ -1,0 +1,167 @@
+{% extends 'admin/base.html' %}
+{% load static %}
+
+{% block title %}{{ app_params.nom_application|default:'Administration' }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="{% static 'jazzmin/overrides.css' %}?v=20250820-1">
+{% endblock %}
+
+{% block sidebar %}
+{{ block.super }}
+<div class="p-2" style="margin:8px;">
+  <a class="btn btn-sm btn-outline-light" href="/gestion-caisses/guide-application.pdf" style="width:100%;text-align:left;">
+    📘 Télécharger le Guide de l'application
+  </a>
+  <small class="text-muted" style="display:block;margin-top:4px;">Guide PDF: rôles, parcours prêt, bonnes pratiques</small>
+  <hr/>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>
+(function(){
+	try {
+		var logoUrl = '';
+		var appName = '';
+		{% if app_params.logo %}
+		logoUrl = '{{ app_params.logo.url }}';
+		{% endif %}
+		{% if app_params.nom_application %}
+		appName = '{{ app_params.nom_application|escapejs }}';
+		{% endif %}
+		if (logoUrl) {
+			var imgs = document.querySelectorAll('#jazzy-logo img.brand-image, .brand-link img.brand-image');
+			imgs.forEach(function(img){ img.src = logoUrl; });
+			// Définir l'icône de l'onglet
+			var link = document.querySelector('link[rel="icon"]') || document.createElement('link');
+			link.rel = 'icon';
+			link.href = logoUrl;
+			document.head.appendChild(link);
+			var apple = document.querySelector('link[rel="apple-touch-icon"]') || document.createElement('link');
+			apple.rel = 'apple-touch-icon';
+			apple.href = logoUrl;
+			document.head.appendChild(apple);
+		}
+		if (appName) {
+			var brandText = document.querySelector('#jazzy-logo .brand-text');
+			if (brandText) { brandText.textContent = appName; }
+			document.title = appName + ' | ' + document.title.replace(/^.*\|\s*/,'');
+		}
+	} catch (e) { /* ignore */ }
+})();
+
+// Notification bell for loan requests
+document.addEventListener('DOMContentLoaded', function(){
+    try {
+        var rightNav = document.querySelector('#jazzy-navbar .navbar-nav.ml-auto') || document.querySelector('#jazzy-navbar .navbar-nav.ms-auto');
+        if (!rightNav) return;
+
+        // Build bell element
+        var li = document.createElement('li');
+        li.className = 'nav-item dropdown';
+        li.id = 'gc-notif-bell';
+        li.innerHTML = '\n<a class="nav-link" data-toggle="dropdown" href="#" aria-expanded="false" title="Demandes de prêt en attente">\n  <i class="far fa-bell"></i>\n  <span class="badge badge-danger navbar-badge" id="gc-notif-badge" style="display:none">0</span>\n</a>\n<div class="dropdown-menu dropdown-menu-right" id="gc-notif-menu" style="min-width:320px;max-width:380px;">\n  <span class="dropdown-item dropdown-header">Demandes de prêt en attente</span>\n  <div class="dropdown-divider"></div>\n  <div class="px-3 py-2 text-muted small" id="gc-notif-empty">Aucune demande de prêt en attente</div>\n</div>';
+        rightNav.insertBefore(li, rightNav.firstChild);
+
+        function getCookie(name){
+            var match = document.cookie.match(new RegExp('(^| )'+name+'=([^;]+)'));
+            return match ? decodeURIComponent(match[2]) : null;
+        }
+
+        var API_BASE = '/gestion-caisses/api/notifications';
+        var PRET_BASE = '/gestion-caisses/api/notifications'; // même ViewSet pour nos endpoints customs
+
+        async function fetchNotifications(){
+            try {
+                // Utiliser l'API basée sur les prêts en attente (indépendant des notifications lues)
+                var res = await fetch(PRET_BASE + '/prets_en_attente_items/', { credentials: 'include' });
+                if (!res.ok) throw new Error('HTTP '+res.status);
+                var data = await res.json();
+                var items = Array.isArray(data) ? data : (data.results || []);
+                // Les données sont déjà filtrées côté serveur pour les demandes de prêt en attente
+                var count = items.length;
+                var badge = document.getElementById('gc-notif-badge');
+                var menu = document.getElementById('gc-notif-menu');
+                var empty = document.getElementById('gc-notif-empty');
+
+                if (!badge || !menu) return;
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : String(count);
+                    badge.style.display = '';
+                    if (empty) empty.remove();
+                    // Clean old items (keep header and first divider)
+                    menu.querySelectorAll('.gc-item, .gc-divider').forEach(function(n){ n.remove(); });
+                    items.slice(0, 10).forEach(function(n){
+                        var a = document.createElement('a');
+                        a.href = n.lien_action || '#';
+                        a.className = 'dropdown-item gc-item';
+                        a.innerHTML = '<div class="d-flex flex-column">\n  <strong>'+ (n.titre || 'Notification') +'</strong>\n  <small class="text-muted">'+ (n.message || '') +'</small>\n</div>';
+                        a.addEventListener('click', function(ev){
+                            ev.preventDefault();
+                            var href = a.getAttribute('href') || '#';
+                            if (href.startsWith('/admin/')) {
+                                href = href.replace('/admin/', '/adminsecurelogin/');
+                            }
+                            if (href && href !== '#') { window.location.href = href; }
+                        });
+                        var div = document.createElement('div');
+                        div.className = 'dropdown-divider gc-divider';
+                        menu.appendChild(a);
+                        menu.appendChild(div);
+                    });
+                    // Footer link
+                    var footer = document.createElement('a');
+                    footer.className = 'dropdown-item dropdown-footer gc-item';
+                    footer.textContent = 'Voir toutes les notifications';
+                    footer.href = '/adminsecurelogin/gestion_caisses/notification/';
+                    menu.appendChild(footer);
+                } else {
+                    badge.style.display = 'none';
+                    // reset menu content if empty
+                    menu.querySelectorAll('.gc-item, .gc-divider').forEach(function(n){ n.remove(); });
+                    var emptyMsg = document.createElement('div');
+                    emptyMsg.className = 'px-3 py-2 text-muted small';
+                    emptyMsg.textContent = 'Aucune demande de prêt en attente';
+                    emptyMsg.id = 'gc-notif-empty';
+                    menu.appendChild(emptyMsg);
+                }
+            } catch(e){ /* fallback: count endpoint */ fetchCountOnly(); }
+        }
+
+        async function fetchCountOnly(){
+            try {
+                var res = await fetch(PRET_BASE + '/count_prets_en_attente/', { credentials: 'include' });
+                if (!res.ok) return;
+                var data = await res.json();
+                var badge = document.getElementById('gc-notif-badge');
+                if (!badge) return;
+                if ((data.count || 0) > 0) {
+                    badge.textContent = data.count > 99 ? '99+' : String(data.count);
+                    badge.style.display = '';
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        async function markAsRead(id){
+            try {
+                await fetch(API_BASE + '/' + id + '/marquer_comme_lu/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+                    credentials: 'include'
+                });
+                fetchNotifications();
+            } catch (e) { /* ignore */ }
+        }
+
+        fetchNotifications();
+        setInterval(fetchNotifications, 30000); // refresh every 30s
+    } catch (e) { /* ignore */ }
+});
+</script>
+{% endblock %}

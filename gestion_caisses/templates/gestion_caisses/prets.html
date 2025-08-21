@@ -1,0 +1,599 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+
+{% block title %}Gestion des Prêts - Gestion des Caisses{% endblock %}
+
+{% block extra_css %}
+<style>
+    .prets-container {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+    
+    .add-pret-btn {
+        background: #10b981;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .add-pret-btn:hover {
+        background: #059669;
+    }
+    
+    .filters {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filters h3 {
+        margin-bottom: 15px;
+        color: #1f2937;
+    }
+    
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .filter-group label {
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #374151;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .prets-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 20px;
+    }
+    
+    .pret-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid #f59e0b;
+    }
+    
+    .pret-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .pret-number {
+        background: #f59e0b;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        font-weight: 500;
+    }
+    
+    .pret-status {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        font-weight: 500;
+    }
+    
+    .status-actif {
+        background: #10b981;
+        color: white;
+    }
+    
+    .status-retard {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .status-rembourse {
+        background: #6b7280;
+        color: white;
+    }
+    
+    .pret-info h4 {
+        margin: 0 0 10px 0;
+        color: #1f2937;
+        font-size: 1.1em;
+    }
+    
+    .pret-details {
+        margin-bottom: 15px;
+    }
+    
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 0.9em;
+    }
+    
+    .detail-label {
+        color: #6b7280;
+    }
+    
+    .detail-value {
+        color: #1f2937;
+        font-weight: 500;
+    }
+    
+    .pret-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .action-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 0.9em;
+        text-align: center;
+        flex: 1;
+    }
+    
+    .btn-view {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .btn-edit {
+        background: #f59e0b;
+        color: white;
+    }
+    
+    .btn-delete {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+    
+    .empty-state h3 {
+        margin-bottom: 10px;
+        color: #1f2937;
+    }
+    
+    .montant {
+        font-weight: bold;
+        color: #1f2937;
+    }
+    
+    .montant-positif {
+        color: #10b981;
+    }
+    
+    .montant-negatif {
+        color: #ef4444;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="prets-container">
+    <div class="page-header">
+        <h1>Gestion des Prêts</h1>
+        <button class="add-pret-btn" onclick="openPretModal()">+ Nouveau Prêt</button>
+    </div>
+    
+    <!-- Filtres -->
+    <div class="filters">
+        <h3>Filtres</h3>
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="filter-caisse">Caisse</label>
+                <select id="filter-caisse">
+                    <option value="">Toutes les caisses</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-status">Statut</label>
+                <select id="filter-status">
+                    <option value="">Tous les statuts</option>
+                    <option value="actif">Actif</option>
+                    <option value="en_retard">En retard</option>
+                    <option value="rembourse">Remboursé</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-membre">Membre</label>
+                <select id="filter-membre">
+                    <option value="">Tous les membres</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div id="prets-content">
+        <div class="empty-state">
+            <h3>Chargement des prêts...</h3>
+            <p>Veuillez patienter pendant le chargement des données.</p>
+        </div>
+    </div>
+</div>
+<!-- Modal création prêt -->
+<div class="modal" tabindex="-1" id="pretModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nouveau prêt</h5>
+        <button type="button" class="btn-close" onclick="closePretModal()"></button>
+      </div>
+      <div class="modal-body">
+        <form id="pretForm">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label required">Membre</label>
+            <select class="form-select" name="membre_id" id="pretMembre" required></select>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label required">Montant demandé (FCFA)</label>
+              <input class="form-control" name="montant_demande" type="number" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Durée (mois)</label>
+              <input class="form-control" name="duree_mois" type="number" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Taux d'intérêt (%)</label>
+              <input class="form-control" name="taux_interet" type="number" step="0.01" value="0" />
+            </div>
+            <div class="col-12">
+              <label class="form-label required">Motif</label>
+              <textarea class="form-control" name="motif" rows="3" required></textarea>
+            </div>
+          </div>
+        </form>
+        <div id="pretError" class="text-danger mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePretModal()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="submitPret()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetchUserContext().then(() => {
+        loadCaisses();
+        loadMembres();
+        loadPrets();
+    });
+    
+    // Événements des filtres
+    document.getElementById('filter-caisse').addEventListener('change', loadPrets);
+    document.getElementById('filter-status').addEventListener('change', loadPrets);
+    document.getElementById('filter-membre').addEventListener('change', loadPrets);
+});
+
+let USER_CAISE_ID = null;
+
+function fetchUserContext(){
+    return fetch('/gestion-caisses/api/user-context/', { headers: { 'X-CSRFToken': getCSRFToken() }})
+      .then(r=>r.json()).then(data=>{ 
+          USER_CAISE_ID = data.caisse_id || null; 
+          // Masquer le filtre de caisse pour les utilisateurs non-admin
+          if (USER_CAISE_ID) {
+              const caisseFilterGroup = document.getElementById('filter-caisse').closest('.filter-group');
+              if (caisseFilterGroup) {
+                  caisseFilterGroup.style.display = 'none';
+              }
+          }
+      });
+}
+
+function openPretModal(){
+    // Charger les membres pour le modal
+    loadMembresForModal();
+    const modal = new bootstrap.Modal(document.getElementById('pretModal'));
+    modal.show();
+}
+function closePretModal(){
+    const modalEl = document.getElementById('pretModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+}
+
+async function submitPret(){
+    try {
+        if (!USER_CAISE_ID){
+            document.getElementById('pretError').textContent = 'Aucune caisse liée à votre profil.';
+            document.getElementById('pretError').style.display = 'block';
+            return;
+        }
+        const form = document.getElementById('pretForm');
+        const payload = Object.fromEntries(new FormData(form).entries());
+        payload['caisse_id'] = USER_CAISE_ID;
+        const res = await fetch('/gestion-caisses/api/prets/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok){
+            const err = await res.json().catch(()=>({}));
+            throw new Error(err?.detail || err?.message || 'Erreur de création');
+        }
+        closePretModal();
+        loadPrets();
+    } catch(e){
+        document.getElementById('pretError').textContent = e.message;
+        document.getElementById('pretError').style.display = 'block';
+    }
+}
+
+function loadCaisses() {
+    // Si l'utilisateur a une caisse spécifique, ne charger que cette caisse
+    if (USER_CAISE_ID) {
+        fetch(`/api/caisses/${USER_CAISE_ID}/`, {
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(caisse => {
+            const select = document.getElementById('filter-caisse');
+            const option = document.createElement('option');
+            option.value = caisse.id;
+            option.textContent = `${caisse.nom_association} (${caisse.code})`;
+            select.appendChild(option);
+            // Désactiver le filtre caisse pour les non-admins
+            select.disabled = true;
+        })
+        .catch(error => console.error('Erreur lors du chargement de la caisse:', error));
+    } else {
+        // Pour les admins, charger toutes les caisses
+        fetch('/api/caisses/', {
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('filter-caisse');
+            const caisses = data.results || data;
+            
+            caisses.forEach(caisse => {
+                const option = document.createElement('option');
+                option.value = caisse.id;
+                option.textContent = `${caisse.nom_association} (${caisse.code})`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Erreur lors du chargement des caisses:', error));
+    }
+}
+
+function loadMembres() {
+    let url = '/api/membres/';
+    const params = new URLSearchParams();
+    
+    // Si l'utilisateur a une caisse spécifique, filtrer par cette caisse
+    if (USER_CAISE_ID) {
+        params.append('caisse', USER_CAISE_ID);
+    }
+    
+    if (params.toString()) {
+        url += '?' + params.toString();
+    }
+    
+    fetch(url, {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const select = document.getElementById('filter-membre');
+        const membres = data.results || data;
+        
+        membres.forEach(membre => {
+            const option = document.createElement('option');
+            option.value = membre.id;
+            option.textContent = membre.nom_complet;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => console.error('Erreur lors du chargement des membres:', error));
+}
+
+function loadPrets() {
+    const caisseFilter = document.getElementById('filter-caisse').value;
+    const statusFilter = document.getElementById('filter-status').value;
+    const membreFilter = document.getElementById('filter-membre').value;
+    
+    let url = '/api/prets/';
+    const params = new URLSearchParams();
+    
+    // Forcer le filtre de caisse pour les utilisateurs non-admin
+    if (USER_CAISE_ID) {
+        params.append('caisse', USER_CAISE_ID);
+    } else if (caisseFilter) {
+        params.append('caisse', caisseFilter);
+    }
+    
+    if (statusFilter) params.append('statut', statusFilter);
+    if (membreFilter) params.append('membre', membreFilter);
+    
+    if (params.toString()) {
+        url += '?' + params.toString();
+    }
+    
+    fetch(url, {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        displayPrets(data.results || data);
+    })
+    .catch(error => {
+        console.error('Erreur lors du chargement des prêts:', error);
+        document.getElementById('prets-content').innerHTML = 
+            '<div class="empty-state"><h3>Erreur de chargement</h3><p>Impossible de charger les prêts.</p></div>';
+    });
+}
+
+function displayPrets(prets) {
+    const container = document.getElementById('prets-content');
+    
+    if (!prets || prets.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>Aucun prêt trouvé</h3>
+                <p>Aucun prêt ne correspond aux critères sélectionnés.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const pretsHTML = prets.map(pret => {
+        const statusClass = pret.statut === 'actif' ? 'status-actif' : 
+                           pret.statut === 'en_retard' ? 'status-retard' : 'status-rembourse';
+        
+        return `
+            <div class="pret-card">
+                <div class="pret-header">
+                    <span class="pret-number">${pret.numero || 'N/A'}</span>
+                    <span class="pret-status ${statusClass}">${pret.statut || 'Inconnu'}</span>
+                </div>
+                <div class="pret-info">
+                    <h4>${pret.membre?.nom_complet || 'Membre inconnu'}</h4>
+                    <div class="pret-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Montant demandé:</span>
+                            <span class="detail-value montant">${pret.montant_demande?.toLocaleString() || 0} FCFA</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Montant accordé:</span>
+                            <span class="detail-value montant">${pret.montant_accord?.toLocaleString() || 0} FCFA</span>
+                        </div>
+                        ${pret.taux_interet && pret.taux_interet > 0 ? `
+                        <div class="detail-row">
+                            <span class="detail-label">Taux d'intérêt:</span>
+                            <span class="detail-value">${pret.taux_interet}%</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Total à rembourser:</span>
+                            <span class="detail-value montant text-success fw-bold">${pret.total_a_rembourser?.toLocaleString() || 0} FCFA</span>
+                        </div>
+                        ` : ''}
+                        <div class="detail-row">
+                            <span class="detail-label">Montant restant:</span>
+                            <span class="detail-value montant ${pret.montant_restant >= 0 ? 'montant-positif' : 'montant-negatif'}">
+                                ${pret.montant_restant?.toLocaleString() || 0} FCFA
+                            </span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Date de prêt:</span>
+                            <span class="detail-value">${pret.date_pret ? new Date(pret.date_pret).toLocaleDateString('fr-FR') : '-'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Échéance (fin du prêt):</span>
+                            <span class="detail-value">${pret.date_fin_pret ? new Date(pret.date_fin_pret).toLocaleDateString('fr-FR') : '-'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Caisse:</span>
+                            <span class="detail-value">${pret.caisse?.nom || 'Aucune caisse'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="pret-actions">
+                    <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/change/" class="action-btn btn-view">Voir</a>
+                    <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/change/" class="action-btn btn-edit">Modifier</a>
+                    <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/delete/" class="action-btn btn-delete">Supprimer</a>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = `<div class="prets-grid">${pretsHTML}</div>`;
+}
+
+function getCSRFToken() {
+    return window.csrfToken || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+}
+
+function loadMembresForModal() {
+    let url = '/api/membres/';
+    const params = new URLSearchParams();
+    
+    // Si l'utilisateur a une caisse spécifique, filtrer par cette caisse
+    if (USER_CAISE_ID) {
+        params.append('caisse', USER_CAISE_ID);
+    }
+    
+    if (params.toString()) {
+        url += '?' + params.toString();
+    }
+    
+    fetch(url, {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const select = document.getElementById('pretMembre');
+        select.innerHTML = '<option value="">Sélectionner un membre</option>';
+        const membres = data.results || data;
+        
+        membres.forEach(membre => {
+            const option = document.createElement('option');
+            option.value = membre.id;
+            option.textContent = membre.nom_complet;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => console.error('Erreur lors du chargement des membres pour le modal:', error));
+}
+</script>
+{% endblock %}

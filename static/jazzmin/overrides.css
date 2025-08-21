@@ -1,0 +1,104 @@
+/* Harmonisation des couleurs de l'admin */
+:root {
+	/* Utilise les classes existantes de Jazzmin; on ajoute quelques ajustements */
+}
+
+#jazzy-navbar {
+	background-color: #6f42c1 !important; /* violet */
+	border-bottom: none !important;
+}
+
+#jazzy-sidebar,
+.main-sidebar {
+	background-color: #5a32a3 !important; /* violet foncé */
+}
+
+#jazzy-sidebar .nav-sidebar > .nav-item > .nav-link.active,
+#jazzy-sidebar .nav-sidebar > .nav-item > .nav-link:hover {
+	background-color: #6f42c1 !important;
+	color: #fff !important;
+}
+
+.btn-primary {
+	background-color: #6f42c1 !important;
+	border-color: #6f42c1 !important;
+}
+
+a {
+	color: #6f42c1;
+}
+
+a:hover {
+	color: #5a32a3;
+}
+
+/* Dégradé violet sur la page de connexion admin */
+body.jazzmin-login-page {
+	background: radial-gradient(circle at 25% 75%, rgba(255,255,255,0.10) 0, rgba(255,255,255,0.0) 180px),
+		linear-gradient(135deg, #7b2cbf 0%, #6a4cbb 40%, #5b3ab4 100%) !important;
+}
+
+/* --- Responsive admin tweaks --- */
+@media (max-width: 991.98px) {
+	/* Collapse sidebar to overlay style */
+	body.sidebar-mini.sidebar-open .content-wrapper,
+	body.sidebar-mini.sidebar-open .main-footer {
+		margin-left: 0 !important;
+	}
+	.brand-link .brand-image {
+		height: 28px !important;
+	}
+	.content-header h1, .content-header .content-header-title {
+		font-size: 1.1rem !important;
+	}
+	.card .card-header > .card-tools {
+		float: none !important;
+		margin-top: .5rem;
+	}
+}
+
+@media (max-width: 767.98px) {
+	/* Make Django admin change_list tables scrollable */
+	.content .card-body table,
+	.change-list .results table,
+	module table {
+		display: block;
+		width: 100%;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	.table th, .table td {
+		white-space: nowrap;
+	}
+
+	/* Filters and actions stacking */
+	.change-list .changelist-form .actions {
+		display: grid;
+		gap: .5rem;
+	}
+	.change-list .paginator .form-control,
+	.change-list .actions select,
+	.change-list .actions .button {
+		width: 100% !important;
+	}
+
+	/* Forms: reduce paddings */
+	.form-horizontal .form-group {
+		margin-left: 0 !important;
+		margin-right: 0 !important;
+	}
+	.col-sm-6, .col-sm-4, .col-sm-3 {
+		flex: 0 0 100% !important;
+		max-width: 100% !important;
+	}
+}
+
+/* Improve hit targets on small screens */
+@media (max-width: 575.98px) {
+	.btn, .btn-sm, .btn-xs { padding: .5rem .75rem !important; }
+	input.form-control, select.form-control { min-height: 40px; }
+}
+
+/* Bell badge spacing */
+#gc-notif-bell .navbar-badge { transform: translate(-20%, -35%); }
+

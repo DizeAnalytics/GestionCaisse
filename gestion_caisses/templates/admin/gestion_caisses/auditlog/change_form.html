@@ -1,0 +1,117 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block content_title %}
+    <h1>🔍 Détails de l'Action d'Audit</h1>
+{% endblock %}
+
+{% block field_sets %}
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📊 Informations Générales</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin: 15px 0;">
+            <div style="background: #e3f2fd; padding: 12px; border-radius: 6px;">
+                <strong>Utilisateur:</strong> {{ original.utilisateur.username|default:"Anonyme" }}
+            </div>
+            <div style="background: #f3e5f5; padding: 12px; border-radius: 6px;">
+                <strong>Action:</strong> {{ original.get_action_display }}
+            </div>
+            <div style="background: #e8f5e8; padding: 12px; border-radius: 6px;">
+                <strong>Modèle:</strong> {{ original.modele }}
+            </div>
+            <div style="background: #fff3e0; padding: 12px; border-radius: 6px;">
+                <strong>ID Objet:</strong> {{ original.objet_id }}
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin: 15px 0;">
+            <div style="background: #fce4ec; padding: 12px; border-radius: 6px;">
+                <strong>Date:</strong> {{ original.date_action|date:"d/m/Y H:i:s" }}
+            </div>
+            <div style="background: #e0f2f1; padding: 12px; border-radius: 6px;">
+                <strong>IP:</strong> {{ original.ip_adresse|default:"Non disponible" }}
+            </div>
+        </div>
+    </div>
+    
+    {{ block.super }}
+{% endblock %}
+
+{% block after_field_sets %}
+    {% if original.details %}
+    <div class="module" style="margin: 20px 0;">
+        <h2>📋 Détails Complets de l'Action</h2>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+            <div style="margin-bottom: 15px;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">Données de la Requête</h3>
+                {% if original.details.url %}
+                <div style="margin: 8px 0;">
+                    <strong>URL:</strong> <code style="background: #e9ecef; padding: 2px 6px; border-radius: 4px;">{{ original.details.url }}</code>
+                </div>
+                {% endif %}
+                {% if original.details.method %}
+                <div style="margin: 8px 0;">
+                    <strong>Méthode HTTP:</strong> <span style="background: #007bff; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">{{ original.details.method }}</span>
+                </div>
+                {% endif %}
+                {% if original.details.user_agent %}
+                <div style="margin: 8px 0;">
+                    <strong>User Agent:</strong> <code style="background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 12px;">{{ original.details.user_agent }}</code>
+                </div>
+                {% endif %}
+                {% if original.details.referer %}
+                <div style="margin: 8px 0;">
+                    <strong>Référent:</strong> <code style="background: #e9ecef; padding: 2px 6px; border-radius: 4px;">{{ original.details.referer }}</code>
+                </div>
+                {% endif %}
+            </div>
+            
+            {% if original.details.request_data %}
+            <div style="margin-bottom: 15px;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">Données Transmises</h3>
+                <pre style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #dee2e6; overflow-x: auto; font-size: 12px;">{{ original.details.request_data|pprint }}</pre>
+            </div>
+            {% endif %}
+            
+            {% if original.details.response_status %}
+            <div style="margin-bottom: 15px;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">Statut de la Réponse</h3>
+                <span style="background: {% if original.details.response_status < 400 %}#28a745{% elif original.details.response_status < 500 %}#ffc107{% else %}#dc3545{% endif %}; color: white; padding: 4px 12px; border-radius: 16px; font-weight: bold;">{{ original.details.response_status }}</span>
+            </div>
+            {% endif %}
+            
+            <div style="margin-bottom: 15px;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">Données Métier</h3>
+                <pre style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #dee2e6; overflow-x: auto; font-size: 12px;">{{ original.details|pprint }}</pre>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if original.utilisateur %}
+    <div class="module" style="margin: 20px 0;">
+        <h2>👤 Informations sur l'Utilisateur</h2>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <strong>Nom d'utilisateur:</strong> {{ original.utilisateur.username }}
+                </div>
+                <div>
+                    <strong>Email:</strong> {{ original.utilisateur.email|default:"Non renseigné" }}
+                </div>
+                <div>
+                    <strong>Prénom:</strong> {{ original.utilisateur.first_name|default:"Non renseigné" }}
+                </div>
+                <div>
+                    <strong>Nom:</strong> {{ original.utilisateur.last_name|default:"Non renseigné" }}
+                </div>
+                <div>
+                    <strong>Date de création:</strong> {{ original.utilisateur.date_joined|date:"d/m/Y" }}
+                </div>
+                <div>
+                    <strong>Dernière connexion:</strong> {{ original.utilisateur.last_login|date:"d/m/Y H:i"|default:"Jamais" }}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endblock %}

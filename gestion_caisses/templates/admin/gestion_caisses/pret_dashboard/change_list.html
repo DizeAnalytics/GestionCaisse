@@ -1,0 +1,318 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content_title %}
+    <h1>📈 Dashboard des Prêts - Gestion des Caisses de Femmes</h1>
+{% endblock %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+{% endblock %}
+
+{% block content %}
+    <!-- Statistiques principales des prêts -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>💰 Vue d'Ensemble des Prêts</h2>
+        <div class="hscroll" style="margin: 20px 0;">
+            
+            <!-- Total des prêts -->
+            <div style="background: linear-gradient(135deg, #2196F3, #1976D2); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                <h3 style="margin: 0; font-size: 16px;">Total des Prêts</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_prets }}</p>
+                <small>Nombre total de prêts accordés</small>
+            </div>
+            
+            <!-- Montant total accordé -->
+            <div style="background: linear-gradient(135deg, #4CAF50, #45a049); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                <h3 style="margin: 0; font-size: 16px;">Montant Total Accordé</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_montant_prets|floatformat:0 }} FCFA</p>
+                <small>Capital total prêté</small>
+            </div>
+            
+            <!-- Montant remboursé -->
+            <div style="background: linear-gradient(135deg, #FF9800, #F57C00); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                <h3 style="margin: 0; font-size: 16px;">Montant Remboursé</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ total_montant_rembourse|floatformat:0 }} FCFA</p>
+                <small>Total des remboursements</small>
+            </div>
+            
+            <!-- Taux de remboursement -->
+            <div style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                <h3 style="margin: 0; font-size: 16px;">Taux de Remboursement</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0;">{{ taux_remboursement_global|floatformat:1 }}%</p>
+                <small>Remboursé / Accordé</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertes et risques -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>⚠️ Alertes et Risques</h2>
+        <div class="hscroll" style="margin: 15px 0;">
+            
+            <!-- Prêts en retard -->
+            <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #d32f2f;">Prêts en Retard</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #d32f2f;">{{ prets_en_retard_count }}</p>
+                <small>Échéances dépassées</small>
+            </div>
+            
+            <!-- Montant en retard -->
+            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #f57c00;">Montant en Retard</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #f57c00;">{{ montant_retard|floatformat:0 }} FCFA</p>
+                <small>Capital non remboursé</small>
+            </div>
+            
+            <!-- Échéances en retard -->
+            <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #d32f2f;">Échéances en Retard</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #d32f2f;">{{ echeances_en_retard }}</p>
+                <small>Paiements manqués</small>
+            </div>
+            
+            <!-- Prêts à risque -->
+            <div style="background: #ffcdd2; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #c62828;">Prêts à Risque</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #c62828;">{{ prets_risque }}</p>
+                <small>+30 jours de retard</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prêts par statut et par région (affichage côte à côte) -->
+    <div class="two-col">
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📊 Prêts par Statut</h2>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Statut</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Nombre</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Montant Total</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Montant Remboursé</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Taux</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for statut in prets_par_statut %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px; border: 1px solid #ddd;">
+                            <strong>
+                                {% if statut.statut == 'EN_ATTENTE' %}⏳ En Attente
+                                {% elif statut.statut == 'VALIDE' %}✅ Validé
+                                {% elif statut.statut == 'EN_COURS' %}🚀 En Cours
+                                {% elif statut.statut == 'REMBOURSE' %}💰 Remboursé
+                                {% elif statut.statut == 'REJETE' %}❌ Rejeté
+                                {% else %}{{ statut.statut }}
+                                {% endif %}
+                            </strong>
+                        </td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ statut.count }}</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ statut.montant_total|floatformat:0 }} FCFA</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ statut.montant_rembourse|floatformat:0 }} FCFA</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">
+                            {% if statut.montant_total > 0 %}
+                                {% widthratio statut.montant_rembourse statut.montant_total 100 %}%
+                            {% else %}
+                                0%
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <!-- Statistiques par région -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>🗺️ Prêts par Région</h2>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Région</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Nombre de Prêts</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Montant Total</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Montant Remboursé</th>
+                        <th style="padding: 12px; text-align: center; border: 1px solid #ddd;">Montant Restant</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for region in prets_par_region %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px; border: 1px solid #ddd;"><strong>{{ region.caisse__region__nom|default:"Non définie" }}</strong></td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.nombre_prets }}</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.montant_total|floatformat:0 }} FCFA</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.montant_rembourse|floatformat:0 }} FCFA</td>
+                        <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">{{ region.montant_restant|floatformat:0 }} FCFA</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+
+    <!-- Évolution des prêts -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📈 Évolution des Prêts</h2>
+        <div class="hscroll" style="margin: 15px 0;">
+            
+            <!-- Prêts 30 jours -->
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #1976d2;">Prêts (30 jours)</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #1976d2;">{{ prets_30_jours }}</p>
+                <small>Depuis {{ month_ago|date:"d/m/Y" }}</small>
+            </div>
+            
+            <!-- Prêts 90 jours -->
+            <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #7b1fa2;">Prêts (90 jours)</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #7b1fa2;">{{ prets_90_jours }}</p>
+                <small>Depuis {{ three_months_ago|date:"d/m/Y" }}</small>
+            </div>
+            
+            <!-- Taux remboursement 30j -->
+            <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #388e3c;">Taux 30j</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #388e3c;">{{ taux_remboursement_30j|floatformat:1 }}%</p>
+                <small>Remboursement 30 jours</small>
+            </div>
+            
+            <!-- Taux remboursement 90j -->
+            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #f57c00;">Taux 90j</h3>
+                <p style="font-size: 20px; font-weight: bold; margin: 5px 0; color: #f57c00;">{{ taux_remboursement_90j|floatformat:1 }}%</p>
+                <small>Remboursement 90 jours</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste détaillée des prêts -->
+    <div class="module">
+        <h2>📋 Liste Détaillée des Prêts</h2>
+        <div style="margin-bottom: 20px;">
+            <p style="color: #666; font-style: italic;">
+                💡 <strong>Conseils d'utilisation :</strong> Utilisez les filtres ci-dessus pour affiner votre recherche. 
+                Les prêts sont affichés avec des indicateurs visuels pour faciliter le suivi.
+            </p>
+        </div>
+        
+        <!-- Filtres et recherche -->
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #333;">🔍 Filtres et Recherche</h3>
+            <p style="margin-bottom: 10px;">
+                <strong>Recherche rapide :</strong> Tapez un numéro de prêt, nom de membre ou nom de caisse
+            </p>
+            <p style="margin-bottom: 10px;">
+                <strong>Filtres disponibles :</strong> Statut, Région, Préfecture, Commune, Dates
+            </p>
+            <p style="margin-bottom: 0;">
+                <strong>Actions en lot :</strong> Sélectionnez plusieurs prêts pour les valider, rejeter ou mettre en attente
+            </p>
+        </div>
+        
+        <!-- Légende des statuts -->
+        <div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #333;">📊 Légende des Statuts</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <div><span style="color: #FF9800; font-weight: bold;">⏳ En Attente</span> - En attente de validation</div>
+                <div><span style="color: #FF5722; font-weight: bold;">⏳ En Attente Admin</span> - En attente validation admin</div>
+                <div><span style="color: #4CAF50; font-weight: bold;">✅ Validé</span> - Prêt validé</div>
+                <div><span style="color: #F44336; font-weight: bold;">❌ Rejeté</span> - Prêt rejeté</div>
+                <div><span style="color: #9C27B0; font-weight: bold;">🚫 Bloqué</span> - Prêt bloqué</div>
+                <div><span style="color: #2196F3; font-weight: bold;">🚀 En Cours</span> - Prêt en cours</div>
+                <div><span style="color: #4CAF50; font-weight: bold;">💰 Remboursé</span> - Prêt remboursé</div>
+                <div><span style="color: #FF5722; font-weight: bold;">⚠️ En Retard</span> - Prêt en retard</div>
+            </div>
+        </div>
+        
+        <!-- Interface de liste standard Django avec améliorations -->
+        {{ block.super }}
+    </div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    /* Horizontal scroll container for cards */
+    .hscroll {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(240px, 1fr);
+        gap: 16px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+    }
+
+    /* Two columns layout for tables side by side */
+    .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    @media (max-width: 1100px) {
+        .two-col { grid-template-columns: 1fr; }
+    }
+
+    /* Améliorations CSS pour le tableau des prêts */
+    .results table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+    
+    .results th {
+        background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
+        padding: 12px 8px;
+        text-align: left;
+        border: 1px solid #ddd;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .results td {
+        padding: 10px 8px;
+        border: 1px solid #ddd;
+        vertical-align: middle;
+    }
+    
+    .results tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    
+    .results tr:hover {
+        background-color: #f0f8ff;
+    }
+    
+    /* Style pour les montants */
+    .montant {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        text-align: right;
+    }
+    
+    /* Style pour les statuts */
+    .statut {
+        font-weight: bold;
+        padding: 4px 8px;
+        border-radius: 4px;
+        text-align: center;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .results {
+            overflow-x: auto;
+        }
+        
+        .results table {
+            min-width: 800px;
+        }
+    }
+</style>
+{% endblock %}

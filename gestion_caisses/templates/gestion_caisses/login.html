@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - Gestion des Caisses</title>
+    <link rel="stylesheet" href="{% static 'login/login.css' %}?v=20250813-1">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+    <meta http-equiv="Pragma" content="no-cache"/>
+    <meta http-equiv="Expires" content="0"/>
+</head>
+<body>
+    <script>window.CSRF_TOKEN = '{{ csrf_token }}';</script>
+    <!-- Animated background -->
+    <div class="bg-animation">
+        <div class="floating-shape shape-1"></div>
+        <div class="floating-shape shape-2"></div>
+        <div class="floating-shape shape-3"></div>
+    </div>
+
+    <div class="login-container">
+        <div class="header">
+            <div class="logo-container">
+                {% if logo %}
+                    <img src="{{ logo.url }}" alt="Logo" class="logo-image">
+                {% else %}
+                    <div class="logo-icon">€</div>
+                {% endif %}
+            </div>
+            <h1 class="company-name">{{ nom_application|default:"CashFlow Pro FKM" }}</h1>
+            <p class="subtitle">{{ description_application|default:"Gestion des Caisses FKM" }}</p>
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Identifiant</label>
+                <div class="input-wrapper">
+                    <input type="text" id="username" name="username" required>
+                    <span class="input-icon">👤</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Mot de passe</label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" name="password" required>
+                    <span class="input-icon password-toggle" onclick="togglePassword()">👁️</span>
+                </div>
+            </div>
+
+            <button type="submit" class="login-button" id="loginBtn">
+                Se connecter
+            </button>
+        </form>
+
+        <div class="forgot-password">
+            <a href="#" onclick="showForgotPassword()">Mot de passe oublié ?</a>
+        </div>
+
+        <div class="divider">
+            <span>Fonctionnalités</span>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">💰</div>
+                <div class="feature-text">Gestion Caisse</div>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <div class="feature-text">Rapports</div>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <div class="feature-text">Sécurisé</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'login/login.js' %}?v=20250813-2"></script>
+</body>
+</html>
+
+

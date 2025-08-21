@@ -1,0 +1,3811 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+
+{% block title %}Tableau de Bord - Gestion des Caisses{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Styles inspirés de index.html (mêmes fonctionnalités et structure) */
+.dashboard-container { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 2rem); background: #f8f9fa; position: relative; }
+
+/* Header de l'application */
+.app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 30px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  z-index: 1000;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.logo-icon {
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.app-title h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  letter-spacing: 1px;
+}
+
+.app-title p {
+  margin: 5px 0 0 0;
+  font-size: 14px;
+  opacity: 0.9;
+  font-weight: 300;
+}
+.sidebar { 
+  background: #2c3e50; 
+  color: #fff; 
+  padding: 20px; 
+  position: sticky; 
+  top: 1rem; 
+  height: calc(100vh - 120px); 
+  border-radius: 12px; 
+  margin-top: 100px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.user-info { 
+  background: rgba(255,255,255,0.08); 
+  border-radius: 12px; 
+  padding: 20px; 
+  margin-bottom: 24px; 
+  text-align: center;
+  position: relative;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.user-avatar { font-size: 42px; margin-bottom: 10px }
+.user-name { font-weight: 600 }
+.user-role { color: #58a6ff }
+.logout-btn { 
+  background: #e74c3c; 
+  color: #fff; 
+  border: none; 
+  padding: 10px 16px; 
+  border-radius: 8px; 
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.logout-btn:hover {
+  background: #c0392b;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.logout-btn:active {
+  transform: translateY(0);
+}
+.nav-menu { display: flex; flex-direction: column; gap: 8px }
+.nav-tab { background: transparent; color: #cbd5e1; border: none; padding: 12px 14px; text-align: left; border-radius: 8px }
+.nav-tab.active, .nav-tab:hover { background: rgba(255,255,255,0.12); color: #fff }
+.main-content { padding: 20px; padding-top: 120px; }
+.content-section { display: none }
+.content-section.active { display: block }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 16px; margin-bottom: 20px }
+.stat-card { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 10px rgba(0,0,0,.08); display: flex; align-items: center; gap: 14px }
+.stat-icon { font-size: 36px }
+.stat-number { font-size: 28px; font-weight: 700 }
+.stat-label { color: #6b7280; text-transform: uppercase; font-size: 12px; letter-spacing: .5px }
+.dashboard-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px }
+.chart-container { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 10px rgba(0,0,0,.08) }
+.alertes-section { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 10px rgba(0,0,0,.08) }
+.alertes-grid { display: grid; gap: 12px }
+.alerte-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; border-left: 4px solid }
+.alerte-item.danger { background: #f8d7da; border-left-color: #dc3545; color:#7a1c21 }
+.alerte-item.warning { background: #fff3cd; border-left-color: #ffc107; color:#7a5a00 }
+.alerte-item.info { background: #d1ecf1; border-left-color: #17a2b8; color:#0c5460 }
+.alerte-item.success { background: #d4edda; border-left-color: #28a745; color:#155724 }
+/* Centrage des modals */
+.modal-dialog { display: flex; align-items: center; min-height: calc(100vh - 2rem); }
+.modal-dialog .modal-content { margin: auto; }
+/* Barre de recherche */
+.search-bar { max-width: 420px }
+@media (max-width: 1024px){ 
+  .dashboard-container { grid-template-columns: 1fr } 
+  .sidebar { position: static; height: auto; margin-top: 0; } 
+  .dashboard-charts{ grid-template-columns:1fr } 
+  .main-content { padding-top: 20px; }
+  .app-header { padding: 15px 20px; }
+  .app-title h1 { font-size: 24px; }
+  .app-title p { font-size: 12px; }
+  .logo-icon { font-size: 28px; }
+  .app-logo { width: 50px; height: 50px; }
+  
+  /* Améliorer la visibilité du bouton de déconnexion sur mobile */
+  .logout-btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin-top: 15px;
+  }
+  
+  .user-info {
+    padding: 25px 20px;
+    margin-bottom: 30px;
+  }
+}
+
+/* Styles pour les modals modernes */
+.modal-content {
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+  border-radius: 15px 15px 0 0;
+}
+
+.modal-footer {
+  border-radius: 0 0 15px 15px;
+}
+
+.btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.alert {
+  border-radius: 10px;
+  border: none;
+}
+
+.card {
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Styles pour les rapports */
+.stat-item {
+  text-align: center;
+  padding: 15px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  margin-bottom: 10px;
+}
+
+.stat-item h3, .stat-item h4 {
+  margin: 0;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.stat-item small {
+  color: #6c757d;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table-responsive {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.table th {
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 0.5px;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+.badge.bg-pink {
+  background-color: #e83e8c !important;
+}
+
+.badge.bg-blue {
+  background-color: #007bff !important;
+}
+
+/* Animation pour les cartes de rapport */
+.card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* Styles pour les filtres de rapport */
+.form-control:focus, .form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.btn-group .btn {
+  border-radius: 6px;
+  margin: 0 2px;
+}
+
+.btn-group .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Styles pour les toasts */
+.toast {
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+/* Animation pour les spinners */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.spinner-border {
+  animation: spinner-border 0.75s linear infinite, pulse 2s ease-in-out infinite;
+}
+
+/* Styles pour les listes dans les modals */
+.list-unstyled li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.list-unstyled li:last-child {
+  border-bottom: none;
+}
+
+/* Styles pour les icônes */
+.fas, .fa {
+  margin-right: 8px;
+}
+
+/* Styles pour les tableaux dans les modals */
+.table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table th {
+  background-color: #f8f9fa;
+  border: none;
+  font-weight: 600;
+}
+
+.table td {
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* Styles pour les boutons dans les modals */
+.modal-footer .btn {
+  min-width: 120px;
+}
+
+/* Styles pour les alertes dans les modals */
+.alert-info {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+
+.alert-success {
+  background-color: #e8f5e8;
+  color: #1b5e20;
+}
+
+.alert-warning {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+.alert-danger {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+/* Styles pour les badges et statuts */
+.badge {
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Styles pour les cartes de prêts */
+.pret-card {
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+
+.pret-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+/* Styles pour les barres de progression */
+.progress {
+  border-radius: 10px;
+  height: 20px;
+  background-color: #f0f0f0;
+}
+
+.progress-bar {
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Styles pour les animations de chargement */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  background-color: white;
+  border-radius: 15px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+/* Styles pour les notifications */
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #dc3545;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Styles pour les tooltips personnalisés */
+.custom-tooltip {
+  position: relative;
+  cursor: help;
+}
+
+.custom-tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+}
+
+/* Styles pour les formulaires dans les modals */
+.form-control, .form-select {
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+  transition: all 0.3s ease;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+}
+
+/* Styles pour les labels */
+.form-label {
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 8px;
+}
+
+/* Styles pour les messages d'erreur */
+.text-danger {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Styles pour les messages de succès */
+.text-success {
+  font-weight: 600;
+}
+
+/* Styles pour les icônes dans les boutons */
+.btn i {
+  margin-right: 6px;
+}
+
+/* Styles pour les modals de confirmation */
+.confirmation-modal .modal-content {
+  border: 3px solid #28a745;
+}
+
+/* Styles pour les modals de succès */
+.success-modal .modal-content {
+  border: 3px solid #28a745;
+}
+
+/* Styles pour les modals d'erreur */
+.error-modal .modal-content {
+  border: 3px solid #dc3545;
+}
+
+/* Styles pour les animations d'entrée */
+.modal.fade .modal-dialog {
+  transform: scale(0.8);
+  transition: transform 0.3s ease;
+}
+
+.modal.show .modal-dialog {
+  transform: scale(1);
+}
+
+/* Styles pour les animations de sortie */
+.modal.fade .modal-dialog {
+  transition: transform 0.3s ease;
+}
+
+/* Styles pour les toasts avec animations */
+.toast {
+  animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Styles pour les boutons de fermeture */
+.btn-close {
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.btn-close:hover {
+  background-color: rgba(255,255,255,0.2);
+  transform: rotate(90deg);
+}
+
+/* Styles pour les sections dans les modals */
+.modal-section {
+  padding: 20px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.modal-section:last-child {
+  border-bottom: none;
+}
+
+/* Styles pour les titres de sections */
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #007bff;
+}
+
+/* Styles pour les listes d'actions */
+.action-list {
+  list-style: none;
+  padding: 0;
+}
+
+.action-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+}
+
+.action-list li:last-child {
+  border-bottom: none;
+}
+
+.action-list li i {
+  margin-right: 10px;
+  width: 20px;
+  text-align: center;
+}
+
+/* Styles pour les informations importantes */
+.important-info {
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+}
+
+.important-info h6 {
+  color: #856404;
+  margin-bottom: 10px;
+}
+
+.important-info ul {
+  margin-bottom: 0;
+  padding-left: 20px;
+}
+
+.important-info li {
+  color: #856404;
+  margin-bottom: 5px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container container-fluid">
+  <!-- Header avec logo et nom de l'application -->
+  <div class="app-header">
+    <div class="app-logo">
+      {% if logo %}
+        <img src="{{ logo.url }}" alt="Logo" class="logo-image">
+      {% else %}
+        <span class="logo-icon">€</span>
+      {% endif %}
+    </div>
+    <div class="app-title">
+      <h1>{{ nom_application|default:"CashFlow Pro FKM" }}</h1>
+      <p>{{ description_application|default:"Gestion des Caisses FKM" }}</p>
+    </div>
+  </div>
+  
+  <div class="sidebar">
+    <div class="user-info">
+      <div class="user-avatar">👤</div>
+      <div class="user-name" id="user-name">{{ user.first_name }} {{ user.last_name }}</div>
+      <div class="user-role" id="user-role">{{ user_role }}</div>
+      <button class="logout-btn" onclick="handleLogout()">🚪 Déconnexion</button>
+    </div>
+    <nav class="nav-menu">
+      <button class="nav-tab active" onclick="showSection(event,'dashboard')">📊 Dashboard</button>
+      <button class="nav-tab" onclick="showSection(event,'caisses')">🏦 Caisses</button>
+      <button class="nav-tab" onclick="showSection(event,'membres')">👥 Membres</button>
+      <button class="nav-tab" onclick="showSection(event,'prets')">💰 Prêts</button>
+      <button class="nav-tab" onclick="showSection(event,'rapports')">📈 Rapports</button>
+    </nav>
+  </div>
+
+  <div class="main-content">
+    <div id="dashboard" class="content-section active">
+      <h2>📊 Tableau de Bord — {{ caisse_nom }}</h2>
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">🏦</div><div><div class="stat-number" id="total-caisses">0</div><div class="stat-label">Total Caisses</div></div></div>
+        <div class="stat-card"><div class="stat-icon">👥</div><div><div class="stat-number" id="total-membres">0</div><div class="stat-label">Total Membres</div></div></div>
+        <div class="stat-card"><div class="stat-icon">💰</div><div><div class="stat-number" id="total-fonds">0 FCFA</div><div class="stat-label">Fonds Disponibles</div></div></div>
+        <div class="stat-card"><div class="stat-icon">📊</div><div><div class="stat-number" id="total-prets">0</div><div class="stat-label">Prêts Actifs</div></div></div>
+        </div>
+      <div class="dashboard-charts">
+        <div class="chart-container">
+          <h3>📈 Évolution des Prêts</h3>
+          <div style="height: 300px; position: relative;">
+            <canvas id="evolutionChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-container">
+          <h3>🏆 Caisses par Région</h3>
+          <div style="height: 300px; position: relative;">
+            <canvas id="regionsChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="alertes-section">
+        <h3>🚨 Alertes</h3>
+        <div id="alertes-list" class="alertes-grid"></div>
+        </div>
+    </div>
+    <div id="caisses" class="content-section">
+      <h2>🏦 Gestion des Caisses</h2>
+      <div id="caisse-card" class="mt-2"></div>
+    </div>
+    <div id="membres" class="content-section">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h2 class="m-0">👥 Gestion des Membres</h2>
+        <div class="d-flex gap-2 align-items-center">
+          <input id="membreSearch" class="form-control search-bar" placeholder="Rechercher un membre..." oninput="filterMembers()" />
+          <button class="btn btn-success" onclick="openMembreModal()">+ Nouveau Membre</button>
+          <button class="btn btn-info" onclick="generateMembresListePDF(USER_CAISE_ID)" title="Générer la liste complète des membres en PDF">
+            <i class="fas fa-file-pdf"></i> Liste PDF
+          </button>
+        </div>
+      </div>
+      <div id="membres-content" class="mt-3"></div>
+    </div>
+    <div id="prets" class="content-section">
+      <div class="d-flex align-items-center justify-content-between">
+        <h2>💰 Gestion des Prêts</h2>
+        <div>
+          <button class="btn btn-warning me-2" onclick="generateEcheancesRetardPDF(event)" title="Générer le rapport des échéances en retard">
+            <i class="fas fa-exclamation-triangle"></i> Échéances en Retard
+          </button>
+          <button class="btn btn-primary" onclick="openPretModal()">+ Nouveau Prêt</button>
+        </div>
+      </div>
+      <div id="prets-content" class="mt-3"></div>
+    </div>
+    <div id="rapports" class="content-section">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>📈 Rapports et Statistiques</h2>
+        <div class="btn-group" role="group">
+          <button type="button" class="btn btn-outline-primary" onclick="genererRapportPDF('general')">
+            <i class="fas fa-file-pdf"></i> PDF Général
+          </button>
+          <button type="button" class="btn btn-outline-success" onclick="genererRapportPDF('financier')">
+            <i class="fas fa-file-pdf"></i> PDF Financier
+          </button>
+          <button type="button" class="btn btn-outline-info" onclick="genererRapportPDF('prets')">
+            <i class="fas fa-file-pdf"></i> PDF Prêts
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtres de date -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">Filtres de période</h5>
+          <div class="row">
+            <div class="col-md-3">
+              <label for="date-debut" class="form-label">Date de début</label>
+              <input type="date" class="form-control" id="date-debut">
+            </div>
+            <div class="col-md-3">
+              <label for="date-fin" class="form-label">Date de fin</label>
+              <input type="date" class="form-control" id="date-fin">
+            </div>
+            <div class="col-md-3">
+              <label for="type-rapport" class="form-label">Type de rapport</label>
+              <select class="form-select" id="type-rapport">
+                <option value="general">Rapport Général</option>
+                <option value="financier">Rapport Financier</option>
+                <option value="prets">Rapport des Prêts</option>
+                <option value="membres">Rapport des Membres</option>
+                <option value="echeances">Rapport des Échéances</option>
+              </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+              <button class="btn btn-primary" onclick="chargerRapport()">
+                <i class="fas fa-search"></i> Charger
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contenu du rapport -->
+      <div id="contenu-rapport">
+        <div class="text-center py-5">
+          <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+          <p class="text-muted">Sélectionnez un type de rapport et cliquez sur "Charger" pour afficher les données</p>
+        </div>
+      </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let evolutionChart, regionsChart;
+let USER_CAISE_ID = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+  loadAlertes();
+  fetchUserContext().then(() => { loadCaisse(); loadMembers(); loadPrets(); });
+});
+
+function showSection(evt, id){
+  document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  evt.currentTarget.classList.add('active');
+  if (id === 'dashboard') loadDashboardData();
+}
+
+function handleLogout(){
+  fetch('/gestion-caisses/api/logout/', { method:'POST', headers: { 'X-CSRFToken': getCSRFToken() }})
+    .then(()=> window.location.href = '/gestion-caisses/');
+}
+
+let isLoadingDashboard = false;
+
+function loadDashboardData(){
+  if (isLoadingDashboard) return; // Éviter les appels multiples
+  
+  isLoadingDashboard = true;
+  
+  fetch('/gestion-caisses/api/dashboard/stats/', { 
+    headers: { 'X-CSRFToken': getCSRFToken() }
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('Erreur réseau');
+      return r.json();
+    })
+    .then(data => {
+      updateDashboardStats(data);
+      renderCharts(data);
+    })
+    .catch(error => {
+      console.error('Erreur lors du chargement du dashboard:', error);
+      // Afficher un message d'erreur à l'utilisateur
+      const alertesList = document.getElementById('alertes-list');
+      if (alertesList) {
+        alertesList.innerHTML = '<div class="alerte-item danger">❌ Erreur lors du chargement des données</div>';
+      }
+    })
+    .finally(() => {
+      isLoadingDashboard = false;
+    });
+}
+
+function loadAlertes(){
+  fetch('/gestion-caisses/api/dashboard/alertes/', { headers: { 'X-CSRFToken': getCSRFToken() }})
+    .then(r=>r.json()).then(data=> updateAlertes(data.alertes || []));
+}
+
+function updateDashboardStats(data){
+  document.getElementById('total-caisses').textContent = data.total_caisses || 0;
+  document.getElementById('total-membres').textContent = data.total_membres || 0;
+  document.getElementById('total-fonds').textContent = ((data.solde_total_disponible || 0)).toLocaleString('fr-FR') + ' FCFA';
+  document.getElementById('total-prets').textContent = data.total_prets_actifs || 0;
+}
+
+function updateAlertes(alertes){
+  const el = document.getElementById('alertes-list');
+  if (!alertes.length){ el.innerHTML = '<div class="alerte-item success">✅ Aucune alerte en cours</div>'; return; }
+  el.innerHTML = alertes.map(a=>`
+    <div class="alerte-item ${a.niveau}">
+      <div class="alerte-icon">${getAlerteIcon(a.niveau)}</div>
+      <div class="alerte-content">
+        <div class="alerte-message">${a.message}</div>
+        <div class="alerte-type">${a.type}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function getAlerteIcon(n){ return ({ danger:'🚨', warning:'⚠️', info:'ℹ️', success:'✅'})[n] || 'ℹ️' }
+
+function getCSRFToken(){ return window.csrfToken || document.querySelector('[name=csrfmiddlewaretoken]')?.value }
+
+function renderCharts(stats){
+  // Vérifier si les données sont valides
+  if (!stats || (!stats.evolution_prets && !stats.caisses_par_region)) {
+    console.log('Aucune donnée de graphique disponible');
+    return;
+  }
+
+  // Données pour l'évolution des prêts
+  const evoLabels = (stats.evolution_prets || []).map(e=>e.mois).reverse();
+  const evoValues = (stats.evolution_prets || []).map(e=>e.nombre).reverse();
+  
+  // Données pour les caisses par région
+  const regLabels = (stats.caisses_par_region || []).map(r=> r.region__nom || r.region || Object.values(r)[0]);
+  const regValues = (stats.caisses_par_region || []).map(r=> r.total);
+
+  // Détruire les graphiques existants
+  if (evolutionChart) {
+    evolutionChart.destroy();
+    evolutionChart = null;
+  }
+  if (regionsChart) {
+    regionsChart.destroy();
+    regionsChart = null;
+  }
+
+  // Créer le graphique d'évolution des prêts
+  const evoCtx = document.getElementById('evolutionChart');
+  if (evoCtx && evoLabels.length > 0) {
+    const ctx = evoCtx.getContext('2d');
+    evolutionChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: evoLabels,
+        datasets: [{
+          label: 'Prêts',
+          data: evoValues,
+          borderColor: '#0d6efd',
+          backgroundColor: 'rgba(13,110,253,.15)',
+          tension: 0.3,
+          fill: true,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // Créer le graphique des caisses par région
+  const regCtx = document.getElementById('regionsChart');
+  if (regCtx && regLabels.length > 0) {
+    const ctx = regCtx.getContext('2d');
+    regionsChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: regLabels,
+        datasets: [{
+          label: 'Caisses',
+          data: regValues,
+          backgroundColor: 'rgba(25,135,84,.65)'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    });
+  }
+}
+
+// ===== Contexte utilisateur / Caisse =====
+async function fetchUserContext(){
+  try{
+    const r = await fetch('/gestion-caisses/api/user-context/', { headers: { 'X-CSRFToken': getCSRFToken() }});
+    const data = await r.json();
+    USER_CAISE_ID = data.caisse_id || null;
+  }catch(e){ USER_CAISE_ID = null; }
+}
+
+async function loadCaisse(){
+  const wrap = document.getElementById('caisse-card');
+  if (!USER_CAISE_ID){ wrap.innerHTML = '<div class="alert alert-warning mt-2">Aucune caisse liée.</div>'; return; }
+  
+  try {
+    // Charger les informations de base de la caisse
+    const res = await fetch('/gestion-caisses/api/caisses/', { headers: { 'X-CSRFToken': getCSRFToken() }});
+    const data = await res.json();
+    const caisse = (data.results && data.results[0]) || data[0] || data;
+    if (!caisse || !caisse.id){ wrap.innerHTML = '<div class="alert alert-warning mt-2">Caisse introuvable.</div>'; return; }
+    
+    // Charger les prêts pour calculer les statistiques
+    const pretsRes = await fetch('/gestion-caisses/api/prets/', { headers: { 'X-CSRFToken': getCSRFToken() }});
+    const pretsData = await pretsRes.json();
+    const prets = pretsData.results || pretsData || [];
+    
+    // Calculer les statistiques des prêts
+    const pretsActifs = prets.filter(p => ['EN_COURS', 'EN_RETARD', 'BLOQUE'].includes(p.statut)).length;
+    const pretsEnAttente = prets.filter(p => ['EN_ATTENTE', 'EN_ATTENTE_ADMIN'].includes(p.statut)).length;
+    const pretsValides = prets.filter(p => p.statut === 'VALIDE').length;
+    const pretsTermines = prets.filter(p => p.statut === 'REMBOURSE').length;
+    const pretsRejetes = prets.filter(p => p.statut === 'REJETE').length;
+    
+    // Calculer les montants
+    const montantTotalPrets = prets.filter(p => ['EN_COURS', 'EN_RETARD', 'BLOQUE'].includes(p.statut))
+      .reduce((sum, p) => sum + (parseFloat(p.montant_accord || 0)), 0);
+    const montantTotalRembourse = prets.filter(p => p.statut === 'REMBOURSE')
+      .reduce((sum, p) => sum + (parseFloat(p.montant_rembourse || 0)), 0);
+    
+    wrap.innerHTML = `
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h5 class="card-title mb-1">🏦 ${caisse.nom_association}</h5>
+              <div class="text-muted">Code: ${caisse.code}</div>
+              <div class="text-muted small">${caisse.region?.nom || ''} ${caisse.prefecture?.nom ? '> ' + caisse.prefecture.nom : ''} ${caisse.commune?.nom ? '> ' + caisse.commune.nom : ''}</div>
+            </div>
+            <div class="text-end d-flex gap-2">
+              <button class="btn btn-outline-secondary btn-sm" onclick="loadCaisse()" title="Rafraîchir">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+              <button class="btn btn-outline-primary btn-sm" onclick="openCaisseModal(${caisse.id}, \"${(caisse.notes||'').replace(/"/g,'&quot;')}\")">
+                <i class="fas fa-edit"></i> Modifier notes
+              </button>
+              <button class="btn btn-outline-success btn-sm" onclick="generateMembresListePDF(${caisse.id})" title="Générer PDF liste des membres">
+                <i class="fas fa-file-pdf"></i> Liste membres
+              </button>
+            </div>
+          </div>
+          
+          <!-- Statistiques principales -->
+          <div class="row g-3 mb-4">
+            <div class="col-6 col-lg-3">
+              <div class="text-center p-3 bg-light rounded">
+                <div class="h4 text-primary mb-1">${caisse.nombre_membres || 0}</div>
+                <div class="text-muted small">Membres actifs</div>
+              </div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-center p-3 bg-light rounded">
+                <div class="h4 text-success mb-1">${pretsActifs}</div>
+                <div class="text-muted small">Prêts actifs</div>
+              </div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-center p-3 bg-light rounded">
+                <div class="h4 text-warning mb-1">${Number(caisse.fond_disponible||0).toLocaleString('fr-FR')}</div>
+                <div class="text-muted small">Fonds disponibles (FCFA)</div>
+              </div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-center p-3 bg-light rounded">
+                <div class="h4 text-info mb-1">${Number(montantTotalPrets).toLocaleString('fr-FR')}</div>
+                <div class="text-muted small">En circulation (FCFA)</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Détails des prêts -->
+          <div class="row g-3 mb-4">
+            <div class="col-12">
+              <h6 class="text-muted mb-3">📊 État des prêts</h6>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-center p-2 border rounded">
+                <div class="h6 text-warning mb-1">${pretsEnAttente}</div>
+                <div class="text-muted small">En attente</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-center p-2 border rounded">
+                <div class="h6 text-info mb-1">${pretsValides}</div>
+                <div class="text-muted small">Validés</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-center p-2 border rounded">
+                <div class="h6 text-success mb-1">${pretsTermines}</div>
+                <div class="text-muted small">Terminés</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="text-center p-2 border rounded">
+                <div class="h6 text-danger mb-1">${pretsRejetes}</div>
+                <div class="text-muted small">Rejetés</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Graphique des prêts par statut -->
+          <div class="row g-3 mb-4">
+            <div class="col-12">
+              <div class="card border-light">
+                <div class="card-body">
+                  <h6 class="text-muted mb-3">📈 Répartition des prêts par statut</h6>
+                  <div style="height: 300px; position: relative;">
+                    <canvas id="pretStatusChart"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Informations financières -->
+          <div class="row g-3">
+            <div class="col-12">
+              <h6 class="text-muted mb-3">💰 Informations financières</h6>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="d-flex justify-content-between p-2 border rounded">
+                <span class="text-muted">Fond initial:</span>
+                <span class="fw-bold">${Number(caisse.fond_initial||0).toLocaleString('fr-FR')} FCFA</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="d-flex justify-content-between p-2 border rounded">
+                <span class="text-muted">Total remboursé:</span>
+                <span class="fw-bold text-success">${Number(montantTotalRembourse).toLocaleString('fr-FR')} FCFA</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="d-flex justify-content-between p-2 border rounded">
+                <span class="text-muted">Taux de remboursement:</span>
+                <span class="fw-bold text-info">${pretsActifs + pretsTermines > 0 ? Math.round((pretsTermines / (pretsActifs + pretsTermines)) * 100) : 0}%</span>
+              </div>
+            </div>
+          </div>
+          
+          ${caisse.notes ? `
+          <div class="mt-4 p-3 bg-light rounded">
+            <h6 class="text-muted mb-2">📝 Notes</h6>
+            <p class="mb-0">${caisse.notes}</p>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+      
+                <!-- Actions rapides et Mouvements de fonds -->
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="card border-primary">
+                <div class="card-body text-center">
+                  <h6 class="text-primary mb-2">🚀 Actions rapides</h6>
+                  <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick="showSection(event, 'membres')">
+                      <i class="fas fa-users"></i> Gérer les membres
+                    </button>
+                    <button class="btn btn-outline-success btn-sm" onclick="showSection(event, 'prets')">
+                      <i class="fas fa-hand-holding-usd"></i> Gérer les prêts
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card border-info">
+                <div class="card-body text-center">
+                  <h6 class="text-info mb-2">📈 Prochaines étapes</h6>
+                  <div class="text-start small">
+                    ${pretsEnAttente > 0 ? `<div class="mb-1">• ${pretsEnAttente} prêt(s) en attente de validation</div>` : ''}
+                    ${pretsValides > 0 ? `<div class="mb-1">• ${pretsValides} prêt(s) validé(s) à octroyer</div>` : ''}
+                    ${pretsActifs > 0 ? `<div class="mb-1">• ${pretsActifs} prêt(s) actif(s) à suivre</div>` : ''}
+                    ${!pretsEnAttente && !pretsValides && !pretsActifs ? '<div class="text-muted">• Aucune action requise</div>' : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card border-warning">
+                <div class="card-body text-center">
+                  <h6 class="text-warning mb-2">💰 Derniers mouvements</h6>
+                  <div class="d-grid gap-2">
+                    <button class="btn btn-outline-warning btn-sm" onclick="loadMouvementsFonds()">
+                      <i class="fas fa-sync-alt"></i> Actualiser
+                    </button>
+                  </div>
+                  <div id="mouvements-fonds-list" class="mt-2 small text-start">
+                    <div class="text-muted text-center">Cliquez pour charger</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+    `;
+    
+    // Créer le graphique des prêts par statut
+    setTimeout(() => createPretStatusChart(prets), 100);
+    
+    // Charger les mouvements de fonds
+    setTimeout(() => loadMouvementsFonds(), 200);
+    
+  } catch (error) {
+    console.error('Erreur lors du chargement de la caisse:', error);
+    wrap.innerHTML = '<div class="alert alert-danger mt-2">Erreur lors du chargement des données de la caisse.</div>';
+  }
+}
+
+// Fonction pour créer un graphique des prêts par statut
+function createPretStatusChart(prets) {
+  const ctx = document.getElementById('pretStatusChart');
+  if (!ctx) return;
+  
+  // Compter les prêts par statut
+  const stats = {
+    'En attente': prets.filter(p => ['EN_ATTENTE', 'EN_ATTENTE_ADMIN'].includes(p.statut)).length,
+    'Validés': prets.filter(p => p.statut === 'VALIDE').length,
+    'En cours': prets.filter(p => p.statut === 'EN_COURS').length,
+    'En retard': prets.filter(p => p.statut === 'EN_RETARD').length,
+    'Terminés': prets.filter(p => p.statut === 'REMBOURSE').length,
+    'Rejetés': prets.filter(p => p.statut === 'REJETE').length
+  };
+  
+  // Filtrer les statuts avec des valeurs > 0
+  const labels = Object.keys(stats).filter(key => stats[key] > 0);
+  const data = labels.map(key => stats[key]);
+  
+  // Couleurs pour chaque statut
+  const colors = {
+    'En attente': '#ffc107',
+    'Validés': '#17a2b8',
+    'En cours': '#28a745',
+    'En retard': '#dc3545',
+    'Terminés': '#6f42c1',
+    'Rejetés': '#6c757d'
+  };
+  
+  const backgroundColor = labels.map(key => colors[key]);
+  
+  // Détruire le graphique existant s'il y en a un
+  if (window.pretStatusChart) {
+    window.pretStatusChart.destroy();
+  }
+  
+  // Créer le nouveau graphique
+  window.pretStatusChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: backgroundColor,
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverBorderWidth: 3,
+        hoverBorderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            padding: 20,
+            usePointStyle: true,
+            font: {
+              size: 12
+            }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          borderColor: '#fff',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percentage = ((context.parsed / total) * 100).toFixed(1);
+              return `${context.label}: ${context.parsed} prêt(s) (${percentage}%)`;
+            },
+            afterLabel: function(context) {
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              return `Total: ${total} prêt(s)`;
+            }
+          }
+        }
+      },
+      animation: {
+        animateRotate: true,
+        animateScale: true
+      }
+    }
+  });
+  
+  // Ajouter des statistiques détaillées sous le graphique
+  const chartContainer = ctx.parentElement;
+  const statsDiv = document.createElement('div');
+  statsDiv.className = 'mt-3';
+  statsDiv.innerHTML = `
+    <div class="row g-2 text-center">
+      ${Object.entries(stats).map(([key, value]) => `
+        <div class="col-4 col-md-2">
+          <div class="p-2 border rounded bg-light">
+            <div class="h6 mb-1" style="color: ${colors[key] || '#6c757d'}">${value}</div>
+            <div class="small text-muted">${key}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  
+  // Supprimer l'ancien div de statistiques s'il existe
+  const oldStatsDiv = chartContainer.querySelector('.mt-3');
+  if (oldStatsDiv) {
+    oldStatsDiv.remove();
+  }
+  
+  chartContainer.appendChild(statsDiv);
+}
+
+// Fonction pour charger et afficher les derniers mouvements de fonds
+async function loadMouvementsFonds() {
+  try {
+    const response = await fetch('/gestion-caisses/api/mouvements-fonds/', { 
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    const data = await response.json();
+    const mouvements = (data.results || data).slice(0, 10); // Limiter à 10 derniers
+    
+    const container = document.getElementById('mouvements-fonds-list');
+    if (!container) return;
+    
+    if (!mouvements.length) {
+      container.innerHTML = '<div class="text-muted text-center">Aucun mouvement de fonds récent</div>';
+      return;
+    }
+    
+    container.innerHTML = mouvements.map(m => `
+      <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+        <div>
+          <div class="fw-bold">${m.type_mouvement}</div>
+          <div class="small text-muted">${m.description || 'Aucune description'}</div>
+          <div class="small text-muted">${new Date(m.date_mouvement).toLocaleDateString('fr-FR')}</div>
+        </div>
+        <div class="text-end">
+          <div class="fw-bold ${m.type_mouvement === 'ALIMENTATION' || m.type_mouvement === 'REMBOURSEMENT' ? 'text-success' : 'text-danger'}">
+            ${m.type_mouvement === 'ALIMENTATION' || m.type_mouvement === 'REMBOURSEMENT' ? '+' : '-'}${Number(m.montant).toLocaleString('fr-FR')} FCFA
+          </div>
+          <div class="small text-muted">Solde: ${Number(m.solde_apres).toLocaleString('fr-FR')} FCFA</div>
+        </div>
+      </div>
+    `).join('');
+    
+  } catch (error) {
+    console.error('Erreur lors du chargement des mouvements de fonds:', error);
+    const container = document.getElementById('mouvements-fonds-list');
+    if (container) {
+      container.innerHTML = '<div class="text-danger text-center">Erreur lors du chargement des mouvements</div>';
+    }
+  }
+}
+
+function openCaisseModal(id, notes){
+  // Supprimer le modal existant s'il y en a un
+  const existingModal = document.getElementById('caisseModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  const html = `
+  <div class="modal fade" tabindex="-1" id="caisseModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">📝 Modifier les notes de la caisse</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Notes et commentaires</label>
+            <textarea class="form-control" id="caisseNotes" rows="5" placeholder="Ajoutez des notes, commentaires ou informations importantes sur cette caisse...">${notes||''}</textarea>
+            <div class="form-text">Ces notes seront visibles par tous les membres de la caisse.</div>
+          </div>
+          <div id="caisseError" class="alert alert-danger mt-2" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button class="btn btn-primary" onclick="submitCaisse(${id})">
+            <i class="fas fa-save"></i> Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  
+  const modal = new bootstrap.Modal(document.getElementById('caisseModal'));
+  modal.show();
+}
+function closeCaisseModal(){ 
+  const el = document.getElementById('caisseModal'); 
+  if (!el) return; 
+  const modal = bootstrap.Modal.getInstance(el);
+  if (modal) {
+    modal.hide();
+    setTimeout(() => el.remove(), 300); // Attendre la fin de l'animation
+  } else {
+    el.remove();
+  }
+}
+async function submitCaisse(id){
+  try{
+    const submitBtn = document.querySelector('#caisseModal .btn-primary');
+    const originalText = submitBtn.innerHTML;
+    
+    // Désactiver le bouton et afficher un indicateur de chargement
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement...';
+    
+    const notes = document.getElementById('caisseNotes').value;
+    const r = await fetch(`/gestion-caisses/api/caisses/${id}/`, { 
+      method:'PATCH', 
+      headers:{
+        'Content-Type':'application/json',
+        'X-CSRFToken':getCSRFToken() 
+      }, 
+      body: JSON.stringify({ notes }) 
+    });
+    
+    if (!r.ok) {
+      const errorData = await r.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Échec de mise à jour des notes');
+    }
+    
+    // Succès
+    closeCaisseModal();
+    
+    // Afficher un message de succès temporaire
+    const successAlert = document.createElement('div');
+    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    successAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successAlert.innerHTML = `
+      <i class="fas fa-check-circle"></i> Notes mises à jour avec succès !
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(successAlert);
+    
+    // Supprimer l'alerte après 3 secondes
+    setTimeout(() => {
+      if (successAlert.parentNode) {
+        successAlert.remove();
+      }
+    }, 3000);
+    
+    // Recharger les données de la caisse
+    loadCaisse();
+    
+  } catch(e) { 
+    const err = document.getElementById('caisseError'); 
+    if (err) { 
+      err.textContent = e.message; 
+      err.style.display = 'block'; 
+    }
+    
+    // Réactiver le bouton
+    const submitBtn = document.querySelector('#caisseModal .btn-primary');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+}
+
+// ===== Membres (CRUD minimal) =====
+function openMembreModal(id){
+  document.getElementById('membreError')?.style && (document.getElementById('membreError').style.display='none');
+  const form = document.getElementById('membreForm');
+  
+  // Ne faire reset que si c'est un nouveau membre (pas d'ID)
+  if (!id) {
+    form.reset();
+    form.id.value = '';
+    
+    // Initialiser les valeurs par défaut pour nouveau membre
+    const sexeSelect = form.querySelector('select[name="sexe"]');
+    if (sexeSelect) sexeSelect.value = 'F';
+    
+    const statutSelect = form.querySelector('select[name="statut"]');
+    if (statutSelect) statutSelect.value = 'ACTIF';
+    
+    const roleSelect = form.querySelector('select[name="role"]');
+    if (roleSelect) roleSelect.value = 'MEMBRE';
+    
+    // Masquer l'aperçu de photo
+    const previewWrapper = document.getElementById('photoPreviewWrapper');
+    if (previewWrapper) previewWrapper.style.display = 'none';
+  } else {
+    // Pour modification, on garde l'ID mais on ne fait pas de reset
+    form.id.value = id;
+  }
+  
+  document.getElementById('membreModalTitle').textContent = id ? 'Modifier membre' : 'Nouveau membre';
+  new bootstrap.Modal(document.getElementById('membreModal')).show();
+}
+function closeMembreModal(){ const m = document.getElementById('membreModal'); bootstrap.Modal.getInstance(m)?.hide(); }
+
+async function submitMembre(){
+  try{
+    if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
+    const form = document.getElementById('membreForm');
+    const id = form.id.value;
+    
+    if (id) {
+      // Modification : utiliser JSON pour les données textuelles
+      const formData = new FormData(form);
+      const photoFile = formData.get('photo');
+      
+      // Créer un objet avec les données textuelles
+      const payload = {
+        numero_carte_electeur: formData.get('numero_carte_electeur'),
+        numero_telephone: formData.get('numero_telephone'),
+        nom: formData.get('nom'),
+        prenoms: formData.get('prenoms'),
+        date_naissance: formData.get('date_naissance'),
+        adresse: formData.get('adresse'),
+        sexe: formData.get('sexe'),
+        role: formData.get('role'),
+        statut: formData.get('statut'),
+        caisse_id: USER_CAISE_ID
+      };
+      
+      const r = await fetch(`/gestion-caisses/api/membres/${id}/`, { 
+        method: 'PATCH', 
+        headers:{ 
+          'Content-Type': 'application/json',
+          'X-CSRFToken':getCSRFToken() 
+        }, 
+        body: JSON.stringify(payload)
+      });
+      
+      if (!r.ok) {
+        const errorData = await r.json();
+        throw new Error(errorData.detail || 'Échec modification membre');
+      }
+    } else {
+      // Création : utiliser FormData pour inclure la photo
+      const formData = new FormData(form);
+      formData.append('caisse_id', USER_CAISE_ID);
+      
+      const r = await fetch('/gestion-caisses/api/membres/', { 
+        method: 'POST', 
+        headers:{ 'X-CSRFToken':getCSRFToken() }, 
+        body: formData 
+      });
+      
+      if (!r.ok) {
+        const errorData = await r.json();
+        throw new Error(errorData.detail || 'Échec création membre');
+      }
+    }
+    
+    closeMembreModal();
+    loadMembers();
+  }catch(e){ 
+    const el = document.getElementById('membreError'); 
+    if (el){ 
+      el.textContent = e.message; 
+      el.style.display='block'; 
+    } 
+  }
+}
+
+let CURRENT_MEMBRES = [];
+async function loadMembers(){
+  const container = document.getElementById('membres-content');
+  container.innerHTML = '<div class="text-muted">Chargement...</div>';
+  const r = await fetch('/gestion-caisses/api/membres/?ordering=nom', { headers:{ 'X-CSRFToken': getCSRFToken() }});
+  const data = await r.json();
+  CURRENT_MEMBRES = data.results || data || [];
+  if (!CURRENT_MEMBRES.length){ container.innerHTML = '<div class="alert alert-light">Aucun membre.</div>'; return; }
+  container.innerHTML = '<div class="row g-3"></div>';
+  const row = container.firstElementChild;
+  CURRENT_MEMBRES.forEach(m=>{
+    const card = document.createElement('div');
+    card.className = 'col-12 col-md-6 col-lg-4';
+    card.innerHTML = `
+      <div class='card h-100 shadow-sm'>
+        <div class='card-body'>
+          <div class='d-flex justify-content-between'>
+            <h5 class='card-title mb-1'>${m.nom_complet}</h5>
+            <span class='badge ${m.statut==='ACTIF'?'bg-success':'bg-secondary'}'>${m.statut}</span>
+          </div>
+          <div class='text-muted mb-2'>Rôle: ${m.role}</div>
+          <div class='small text-muted'>Téléphone: ${m.numero_telephone||'-'}</div>
+          <div class='mt-3 d-flex gap-2'>
+            <button class='btn btn-sm btn-outline-primary' onclick='prefillMembre(${m.id})'>Modifier</button>
+            <button class='btn btn-sm btn-outline-success' onclick='generateMembrePDF(${m.id})' title='Générer fiche PDF'>
+              <i class="fas fa-file-pdf"></i>
+            </button>
+          </div>
+        </div>
+      </div>`;
+    row.appendChild(card);
+  });
+}
+
+function filterMembers(){
+  const q = (document.getElementById('membreSearch').value||'').toLowerCase();
+  const list = CURRENT_MEMBRES.filter(m => (m.nom_complet||'').toLowerCase().includes(q) || (m.numero_telephone||'').toLowerCase().includes(q));
+  const container = document.getElementById('membres-content');
+  if (!list.length){ container.innerHTML = '<div class="alert alert-light mt-3">Aucun membre ne correspond.</div>'; return; }
+  container.innerHTML = '<div class="row g-3"></div>';
+  const row = container.firstElementChild;
+  list.forEach(m=>{
+    const card = document.createElement('div');
+    card.className = 'col-12 col-md-6 col-lg-4';
+    card.innerHTML = `
+      <div class='card h-100 shadow-sm'>
+        <div class='card-body'>
+          <div class='d-flex justify-content-between'>
+            <h5 class='card-title mb-1'>${m.nom_complet}</h5>
+            <span class='badge ${m.statut==='ACTIF'?'bg-success':'bg-secondary'}'>${m.statut}</span>
+          </div>
+          <div class='text-muted mb-2'>Rôle: ${m.role}</div>
+          <div class='small text-muted'>Téléphone: ${m.numero_telephone||'-'}</div>
+          <div class='mt-3 d-flex gap-2'>
+            <button class='btn btn-sm btn-outline-primary' onclick='prefillMembre(${m.id})'>Modifier</button>
+            <button class='btn btn-sm btn-outline-success' onclick='generateMembrePDF(${m.id})' title='Générer fiche PDF'>
+              <i class="fas fa-file-pdf"></i>
+            </button>
+          </div>
+        </div>
+      </div>`;
+    row.appendChild(card);
+  });
+}
+
+async function prefillMembre(id){
+  const r = await fetch(`/gestion-caisses/api/membres/${id}/`, { headers:{ 'X-CSRFToken':getCSRFToken() }});
+  const m = await r.json();
+  
+  // D'abord ouvrir le modal
+  openMembreModal(id);
+  
+  // Ensuite remplir les données
+  const form = document.getElementById('membreForm');
+  form.id.value = id;
+  form.numero_carte_electeur.value = m.numero_carte_electeur || '';
+  form.numero_telephone.value = m.numero_telephone || '';
+  form.nom.value = m.nom || '';
+  form.prenoms.value = m.prenoms || '';
+  form.date_naissance.value = m.date_naissance || '';
+  form.adresse.value = m.adresse || '';
+  
+  // Gérer le champ sexe
+  const sexeSelect = form.querySelector('select[name="sexe"]');
+  if (sexeSelect) sexeSelect.value = m.sexe || 'F';
+  
+  form.role.value = m.role || 'MEMBRE';
+  form.statut.value = m.statut || 'ACTIF';
+  
+  // Gérer l'affichage de la photo existante
+  if (m.photo){
+    const preview = document.getElementById('photoPreview');
+    const previewWrapper = document.getElementById('photoPreviewWrapper');
+    if (preview && previewWrapper){
+      preview.src = m.photo;
+      previewWrapper.style.display = 'block';
+    }
+  } else {
+    const previewWrapper = document.getElementById('photoPreviewWrapper');
+    if (previewWrapper) previewWrapper.style.display = 'none';
+  }
+}
+
+// ===== Prêts (CRUD minimal) =====
+function openPretModal(id){
+  document.getElementById('pretError')?.style && (document.getElementById('pretError').style.display='none');
+  const form = document.getElementById('pretForm');
+  form.reset();
+  form.id.value = id || '';
+  document.getElementById('pretModalTitle').textContent = id ? 'Modifier prêt' : 'Nouveau prêt';
+  
+  // Réinitialiser l'avertissement et le bouton
+  const warningDiv = document.getElementById('memberLoanWarning');
+  const submitBtn = document.querySelector('#pretModal .btn-primary');
+  if (warningDiv) warningDiv.style.display = 'none';
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Enregistrer';
+  }
+  
+  loadPretMembres().then(async ()=>{ 
+    const modalEl = document.getElementById('pretModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    if (id) {
+      await prefillPret(id);
+    } else {
+      setTimeout(() => updateInterestPreview(), 0);
+    }
+  });
+}
+function closePretModal(){ const m = document.getElementById('pretModal'); bootstrap.Modal.getInstance(m)?.hide(); }
+
+async function loadPretMembres(){
+  const sel = document.getElementById('pretMembre');
+  sel.innerHTML = '';
+  const r = await fetch('/gestion-caisses/api/membres/', { headers:{ 'X-CSRFToken':getCSRFToken() }});
+  const data = await r.json();
+  (data.results||data).forEach(m=>{ const opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.nom_complet; sel.appendChild(opt); });
+}
+
+async function submitPret(){
+  try{
+    if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
+    const form = document.getElementById('pretForm');
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const id = payload.id; delete payload.id;
+    payload.caisse_id = USER_CAISE_ID;
+    const method = id ? 'PATCH' : 'POST';
+    const url = id ? `/gestion-caisses/api/prets/${id}/` : '/gestion-caisses/api/prets/';
+    const r = await fetch(url, { method, headers:{ 'Content-Type':'application/json','X-CSRFToken':getCSRFToken() }, body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('Échec enregistrement prêt');
+    closePretModal();
+    loadPrets();
+  }catch(e){ const el = document.getElementById('pretError'); if (el){ el.textContent = e.message; el.style.display='block'; } }
+}
+
+async function loadPrets(){
+  const container = document.getElementById('prets-content');
+  container.innerHTML = '<div class="text-muted">Chargement...</div>';
+  const r = await fetch('/gestion-caisses/api/prets/', { headers:{ 'X-CSRFToken': getCSRFToken() }});
+  const data = await r.json();
+  const prets = data.results || data;
+  if (!prets || !prets.length){ container.innerHTML = '<div class="alert alert-light">Aucun prêt.</div>'; return; }
+  container.innerHTML = '<div class="row g-3"></div>';
+  const row = container.firstElementChild;
+  prets.forEach(p=>{
+    const statusClass = p.statut==='EN_COURS'?'bg-success':(p.statut==='EN_RETARD'?'bg-danger':'bg-secondary');
+    const card = document.createElement('div'); card.className='col-12 col-lg-6';
+    card.innerHTML = `
+      <div class='card h-100 shadow-sm'>
+        <div class='card-body'>
+          <div class='d-flex justify-content-between'>
+            <span class='badge ${statusClass}'>${p.statut}</span>
+            <span class='text-muted'>${p.numero_pret||''}</span>
+          </div>
+          <h5 class='mt-2 mb-1'>${p.membre_nom || p.membre?.nom_complet || ''}</h5>
+          <div class='small text-muted'>Montant demandé: ${Number(p.montant_demande||0).toLocaleString('fr-FR')} FCFA</div>
+          ${p.taux_interet && p.taux_interet > 0 ? `
+          <div class='small text-info'>
+            <i class="fas fa-percentage"></i> Taux: ${p.taux_interet}% | 
+            Intérêt: ${Number((p.montant_accord||p.montant_demande||0) * (p.taux_interet||0) / 100).toLocaleString('fr-FR')} FCFA
+          </div>
+          <div class='small text-success fw-bold'>
+            Total à rembourser: ${Number(p.total_a_rembourser||0).toLocaleString('fr-FR')} FCFA
+          </div>
+          ` : `
+          <div class='small text-muted'>Total à rembourser: ${Number(p.montant_accord||p.montant_demande||0).toLocaleString('fr-FR')} FCFA</div>
+          `}
+          <div class='small text-muted'>Reste: ${Number(p.montant_restant||0).toLocaleString('fr-FR')} FCFA</div>
+          <div class='mt-3 d-flex gap-2 flex-wrap'>
+            ${['EN_ATTENTE','EN_ATTENTE_ADMIN'].includes(p.statut) ? `<button class='btn btn-sm btn-outline-primary' onclick='openPretModal(${p.id})'><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            ${p.statut==='EN_ATTENTE_ADMIN' ? `<button class='btn btn-sm btn-success' onclick='validerPret(${p.id})'><i class="fas fa-check"></i> Valider</button>` : ''}
+            ${p.statut==='EN_ATTENTE_ADMIN' ? `<button class='btn btn-sm btn-danger' onclick='rejeterPret(${p.id})'><i class="fas fa-times"></i> Rejeter</button>` : ''}
+            ${p.statut==='VALIDE' ? `<button class='btn btn-sm btn-success' onclick='octroyerPret(${p.id})'><i class="fas fa-hand-holding-usd"></i> Octroyer</button>` : ''}
+            ${(p.statut==='EN_COURS'||p.statut==='EN_RETARD') ? `<button class='btn btn-sm btn-warning' onclick='openRemboursementModal(${p.id})'><i class="fas fa-money-bill-wave"></i> Rembourser</button>` : ''}
+            ${p.statut==='EN_COURS' ? `<button class='btn btn-sm btn-outline-info' onclick='generateAttestationPretPDF(${p.id})'><i class="fas fa-file-pdf"></i> Attestation Prêt</button>` : ''}
+            ${p.statut==='REMBOURSE' ? `<button class='btn btn-sm btn-info' onclick='generateRemboursementCompletPDF(${p.id})'><i class="fas fa-file-pdf"></i> PDF Complet</button>` : ''}
+            ${p.statut==='REMBOURSE' ? `<button class='btn btn-sm btn-outline-success' onclick='generateAttestationRemboursementPDF(${p.id})'><i class="fas fa-file-pdf"></i> Attestation Remboursement</button>` : ''}
+            ${p.statut==='REJETE' ? `<button class='btn btn-sm btn-danger' onclick='deletePret(${p.id})'><i class="fas fa-trash"></i> Supprimer</button>` : ''}
+            ${p.statut==='BLOQUE' ? `<button class='btn btn-sm btn-warning' onclick='showFondsInsuffisantsAlert(${JSON.stringify(p).replace(/"/g, '&quot;')})'><i class="fas fa-exclamation-triangle"></i> Voir Détails</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    row.appendChild(card);
+  });
+}
+
+// Fonction pour vérifier le statut des prêts du membre sélectionné
+async function checkMemberLoanStatus() {
+  const membreId = document.getElementById('pretMembre').value;
+  const warningDiv = document.getElementById('memberLoanWarning');
+  const submitBtn = document.querySelector('#pretModal .btn-primary');
+  
+  if (!membreId) {
+    warningDiv.style.display = 'none';
+    submitBtn.disabled = false;
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/gestion-caisses/api/prets/?membre=${membreId}`, {
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    const data = await response.json();
+    const prets = data.results || data;
+    
+    // Vérifier s'il y a des prêts actifs (EN_COURS, EN_RETARD, BLOQUE)
+    const hasActiveLoan = prets.some(pret => 
+      ['EN_COURS', 'EN_RETARD', 'BLOQUE'].includes(pret.statut)
+    );
+    
+    if (hasActiveLoan) {
+      warningDiv.style.display = 'block';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Prêt impossible - Membre en cours';
+    } else {
+      warningDiv.style.display = 'none';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Enregistrer';
+    }
+  } catch (error) {
+    console.error('Erreur lors de la vérification du statut des prêts:', error);
+  }
+}
+
+// Fonction pour mettre à jour l'aperçu du calcul d'intérêt
+function updateInterestPreview() {
+  const montantDemande = parseFloat(document.getElementById('pretForm').montant_demande.value || 0);
+  const tauxInteret = parseFloat(document.getElementById('pretForm').taux_interet.value || 0);
+  
+  if (montantDemande > 0 && tauxInteret > 0) {
+    const interet = montantDemande * tauxInteret / 100;
+    const total = montantDemande + interet;
+    
+    document.getElementById('previewMontantDemande').textContent = montantDemande.toLocaleString('fr-FR');
+    document.getElementById('previewInteret').textContent = interet.toLocaleString('fr-FR');
+    document.getElementById('previewTotal').textContent = total.toLocaleString('fr-FR');
+    
+    // Mettre à jour le taux affiché dans l'aperçu
+    document.querySelector('#interestPreview .col-md-4:nth-child(2) strong').innerHTML = `Intérêt (${tauxInteret}%):`;
+    
+    document.getElementById('interestPreview').style.display = 'block';
+  } else {
+    document.getElementById('interestPreview').style.display = 'none';
+  }
+}
+
+async function prefillPret(id){
+  const r = await fetch(`/gestion-caisses/api/prets/${id}/`, { headers:{ 'X-CSRFToken':getCSRFToken() }});
+  const p = await r.json();
+  const form = document.getElementById('pretForm');
+  form.id.value = id;
+  document.getElementById('pretMembre').value = p.membre?.id || '';
+  form.montant_demande.value = p.montant_demande || p.montant_accord || 0;
+  form.duree_mois.value = p.duree_mois || 0;
+  form.taux_interet.value = p.taux_interet || 0;
+  form.motif.value = p.motif || '';
+  // Mettre à jour l'aperçu du calcul d'intérêt
+  setTimeout(() => updateInterestPreview(), 0);
+}
+
+async function octroyerPret(id){
+  // Afficher un modal moderne de confirmation
+  showOctroiConfirmationModal(id);
+}
+
+function showOctroiConfirmationModal(pretId) {
+  // Supprimer le modal existant s'il y en a un
+  const existingModal = document.getElementById('octroiConfirmationModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  const modalHtml = `
+    <div class="modal fade" id="octroiConfirmationModal" tabindex="-1" aria-labelledby="octroiModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+          <div class="modal-header bg-success text-white border-0">
+            <h5 class="modal-title" id="octroiModalLabel">
+              <i class="fas fa-hand-holding-usd me-2"></i>
+              Confirmation d'Octroi de Prêt
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="text-center mb-4">
+              <div class="alert alert-info border-0 bg-light">
+                <i class="fas fa-info-circle text-primary me-2"></i>
+                <strong>Action importante :</strong> Vous êtes sur le point d'octroyer ce prêt au membre.
+              </div>
+            </div>
+            
+            <div class="row">
+              <div class="col-12">
+                <div class="d-flex align-items-center justify-content-center mb-3">
+                  <div class="spinner-border text-primary me-3" role="status" id="octroiSpinner" style="display: none;">
+                    <span class="visually-hidden">Chargement...</span>
+                  </div>
+                  <div id="octroiContent">
+                    <p class="mb-3">
+                      <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                      Cette action va :
+                    </p>
+                    <ul class="list-unstyled ms-4">
+                      <li><i class="fas fa-check-circle text-success me-2"></i>Débiter le montant du prêt de la caisse</li>
+                      <li><i class="fas fa-check-circle text-success me-2"></i>Changer le statut du prêt à "En cours"</li>
+                      <li><i class="fas fa-check-circle text-success me-2"></i>Générer un PDF d'attestation d'octroi</li>
+                      <li><i class="fas fa-check-circle text-success me-2"></i>Envoyer une notification à la présidente</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div id="octroiError" class="alert alert-danger mt-3" style="display: none;">
+              <i class="fas fa-exclamation-circle me-2"></i>
+              <span id="octroiErrorMessage"></span>
+            </div>
+          </div>
+          <div class="modal-footer border-0 bg-light">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="fas fa-times me-2"></i>Annuler
+            </button>
+            <button type="button" class="btn btn-success" onclick="confirmOctroi(${pretId})" id="confirmOctroiBtn">
+              <i class="fas fa-hand-holding-usd me-2"></i>Confirmer l'Octroi
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = new bootstrap.Modal(document.getElementById('octroiConfirmationModal'));
+  modal.show();
+}
+
+async function confirmOctroi(pretId) {
+  const spinner = document.getElementById('octroiSpinner');
+  const content = document.getElementById('octroiContent');
+  const confirmBtn = document.getElementById('confirmOctroiBtn');
+  const errorDiv = document.getElementById('octroiError');
+  const errorMessage = document.getElementById('octroiErrorMessage');
+  
+  // Afficher le spinner et désactiver le bouton
+  spinner.style.display = 'block';
+  content.style.display = 'none';
+  confirmBtn.disabled = true;
+  confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Traitement en cours...';
+  errorDiv.style.display = 'none';
+  
+  try {
+    // Appeler l'API pour octroyer le prêt
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/octroyer/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de l\'octroi du prêt');
+    }
+    
+    const data = await response.json();
+    
+    // Afficher le succès
+    showOctroiSuccessModal(pretId, data);
+    
+  } catch (error) {
+    console.error('Erreur lors de l\'octroi:', error);
+    
+    // Afficher l'erreur
+    errorMessage.textContent = error.message;
+    errorDiv.style.display = 'block';
+    
+    // Restaurer l'interface
+    spinner.style.display = 'none';
+    content.style.display = 'block';
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = '<i class="fas fa-hand-holding-usd me-2"></i>Confirmer l\'Octroi';
+  }
+}
+
+function showOctroiSuccessModal(pretId, pretData) {
+  // Fermer le modal de confirmation
+  const confirmationModal = bootstrap.Modal.getInstance(document.getElementById('octroiConfirmationModal'));
+  confirmationModal.hide();
+  
+  // Supprimer le modal existant s'il y en a un
+  const existingModal = document.getElementById('octroiSuccessModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  const modalHtml = `
+    <div class="modal fade" id="octroiSuccessModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+          <div class="modal-header bg-success text-white border-0">
+            <h5 class="modal-title" id="successModalLabel">
+              <i class="fas fa-check-circle me-2"></i>
+              Prêt Octroyé avec Succès !
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="text-center mb-4">
+              <div class="alert alert-success border-0 bg-light-success">
+                <i class="fas fa-hand-holding-usd text-success me-2"></i>
+                <strong>Félicitations !</strong> Le prêt a été octroyé avec succès.
+              </div>
+            </div>
+            
+            <div class="row">
+              <div class="col-12">
+                <div class="card border-0 bg-light">
+                  <div class="card-body">
+                    <h6 class="card-title text-primary">
+                      <i class="fas fa-file-alt me-2"></i>Détails de l'Octroi
+                    </h6>
+                    <div class="row">
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Numéro de prêt :</strong></p>
+                        <p class="text-muted">${pretData.numero_pret || 'N/A'}</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Membre :</strong></p>
+                        <p class="text-muted">${pretData.membre?.nom_complet || 'N/A'}</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Montant accordé :</strong></p>
+                        <p class="text-success fw-bold">${Number(pretData.montant_accord || 0).toLocaleString('fr-FR')} FCFA</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Date d'octroi :</strong></p>
+                        <p class="text-muted">${new Date().toLocaleDateString('fr-FR')}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="alert alert-info mt-3 border-0">
+              <i class="fas fa-info-circle me-2"></i>
+              <strong>Prochaines étapes :</strong>
+              <ul class="mb-0 mt-2">
+                <li>Téléchargez l'attestation d'octroi en PDF</li>
+                <li>Remettez le montant au membre</li>
+                <li>Suivez les remboursements dans le tableau</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer border-0 bg-light">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+              <i class="fas fa-times me-2"></i>Fermer
+            </button>
+            <button type="button" class="btn btn-primary" onclick="downloadOctroiPDF(${pretId})">
+              <i class="fas fa-file-pdf me-2"></i>Télécharger l'Attestation
+            </button>
+            <button type="button" class="btn btn-success" onclick="closeOctroiSuccessAndRefresh()">
+              <i class="fas fa-check me-2"></i>Terminé
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  const modal = new bootstrap.Modal(document.getElementById('octroiSuccessModal'));
+  modal.show();
+}
+
+async function downloadOctroiPDF(pretId) {
+  try {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Génération...';
+    
+    // Appeler l'API pour générer le PDF
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/octroi_pdf/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `attestation-octroi-pret-${pretId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    showToast('PDF généré avec succès !', 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    showToast('Erreur lors de la génération du PDF', 'error');
+  } finally {
+    // Restaurer le bouton
+    const button = event.target;
+    button.disabled = false;
+    button.innerHTML = '<i class="fas fa-file-pdf me-2"></i>Télécharger l\'Attestation';
+  }
+}
+
+function closeOctroiSuccessAndRefresh() {
+  // Fermer le modal de succès
+  const successModal = bootstrap.Modal.getInstance(document.getElementById('octroiSuccessModal'));
+  successModal.hide();
+  
+  // Recharger la liste des prêts
+  loadPrets();
+  
+  // Afficher un toast de confirmation
+  showToast('Prêt octroyé avec succès !', 'success');
+}
+
+function showToast(message, type = 'info') {
+  const toastHtml = `
+    <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0 position-fixed" 
+         style="top: 20px; right: 20px; z-index: 9999;" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">
+          <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
+          ${message}
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', toastHtml);
+  const toastElement = document.querySelector('.toast');
+  const toast = new bootstrap.Toast(toastElement);
+  toast.show();
+  
+  // Supprimer le toast après qu'il soit caché
+  toastElement.addEventListener('hidden.bs.toast', () => {
+    toastElement.remove();
+  });
+}
+
+function openRemboursementModal(id){
+  const html = `
+  <div class="modal" tabindex="-1" id="rembModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Remboursement</h5><button type="button" class="btn-close" onclick="closeRembModal()"></button></div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Montant</label><input type="number" class="form-control" id="rembMontant" /></div>
+          <div class="mb-3"><label class="form-label">Intérêt (optionnel)</label><input type="number" class="form-control" id="rembInteret" value="0" /></div>
+          <div class="text-danger small" id="rembErr" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeRembModal()">Annuler</button>
+          <button class="btn btn-primary" onclick="submitRemboursement(${id})">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  new bootstrap.Modal(document.getElementById('rembModal')).show();
+}
+
+function closeRembModal(){ const el = document.getElementById('rembModal'); if (!el) return; bootstrap.Modal.getInstance(el)?.hide(); el.remove(); }
+
+async function submitRemboursement(id){
+  try{
+    const montant = parseFloat(document.getElementById('rembMontant').value||'0');
+    const interet = parseFloat(document.getElementById('rembInteret').value||'0');
+    if (!montant || montant<=0) throw new Error('Montant invalide');
+    const r = await fetch(`/gestion-caisses/api/prets/${id}/rembourser/`, { method:'POST', headers:{ 'Content-Type':'application/json','X-CSRFToken':getCSRFToken() }, body: JSON.stringify({ montant, interet }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error||'Échec remboursement');
+    closeRembModal();
+    if (data.mouvement_id){ window.open(`/gestion-caisses/api/prets/${id}/remboursement_pdf/?mouvement_id=${data.mouvement_id}`, '_blank'); }
+    loadPrets();
+  }catch(e){ const el = document.getElementById('rembErr'); if (el){ el.textContent = e.message; el.style.display='block'; } }
+}
+
+// Fonction pour supprimer un prêt rejeté (admin seulement)
+async function deletePret(id){
+  if (!confirm('Êtes-vous sûr de vouloir supprimer ce prêt rejeté ? Cette action est irréversible.')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/gestion-caisses/api/prets/${id}/supprimer/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erreur lors de la suppression');
+    }
+    
+    const data = await response.json();
+    
+    // Afficher un message de succès
+    const successAlert = document.createElement('div');
+    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    successAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successAlert.innerHTML = `
+      <i class="fas fa-check-circle"></i> ${data.message || 'Prêt supprimé avec succès'}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(successAlert);
+    
+    // Supprimer l'alerte après 3 secondes
+    setTimeout(() => {
+      if (successAlert.parentNode) {
+        successAlert.remove();
+      }
+    }, 3000);
+    
+    // Recharger la liste des prêts
+    loadPrets();
+    
+  } catch (error) {
+    console.error('Erreur lors de la suppression:', error);
+    
+    // Afficher un message d'erreur
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    errorAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    errorAlert.innerHTML = `
+      <i class="fas fa-exclamation-triangle"></i> Erreur lors de la suppression: ${error.message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(errorAlert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+      if (errorAlert.parentNode) {
+        errorAlert.remove();
+      }
+    }, 5000);
+  }
+}
+
+// Fonction pour générer un PDF de remboursement complet
+async function generateRemboursementCompletPDF(pretId) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Appeler l'API pour générer le PDF de remboursement complet
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/remboursement_complet_pdf/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `remboursement-complet-pret-${pretId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    const successAlert = document.createElement('div');
+    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    successAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successAlert.innerHTML = `
+      <i class="fas fa-check-circle"></i> PDF de remboursement complet généré avec succès !
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(successAlert);
+    
+    // Supprimer l'alerte après 3 secondes
+    setTimeout(() => {
+      if (successAlert.parentNode) {
+        successAlert.remove();
+      }
+    }, 3000);
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    
+    // Afficher un message d'erreur
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    errorAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    errorAlert.innerHTML = `
+      <i class="fas fa-exclamation-triangle"></i> Erreur lors de la génération du PDF: ${error.message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(errorAlert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+      if (errorAlert.parentNode) {
+        errorAlert.remove();
+      }
+    }, 5000);
+  } finally {
+    // Réactiver le bouton
+    const button = event.target;
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+}
+
+// Fonction pour générer l'attestation de prêt PDF
+async function generateAttestationPretPDF(pretId) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Rediriger vers l'URL de génération du PDF
+    window.open(`/gestion-caisses/attestation-pret/${pretId}/pdf/`, '_blank');
+    
+    // Afficher un message de succès
+    const successAlert = document.createElement('div');
+    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    successAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successAlert.innerHTML = `
+      <i class="fas fa-check-circle"></i> Attestation de prêt générée avec succès !
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(successAlert);
+    
+    // Supprimer l'alerte après 3 secondes
+    setTimeout(() => {
+      if (successAlert.parentNode) {
+        successAlert.remove();
+      }
+    }, 3000);
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération de l\'attestation:', error);
+    
+    // Afficher un message d'erreur
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    errorAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    errorAlert.innerHTML = `
+      <i class="fas fa-exclamation-triangle"></i> Erreur lors de la génération de l'attestation: ${error.message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(errorAlert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+      if (errorAlert.parentNode) {
+        errorAlert.remove();
+      }
+    }, 5000);
+  } finally {
+    // Réactiver le bouton
+    const button = event.target;
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+}
+
+// Fonction pour générer l'attestation de remboursement PDF
+async function generateAttestationRemboursementPDF(pretId) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Rediriger vers l'URL de génération du PDF
+    window.open(`/gestion-caisses/attestation-remboursement/${pretId}/pdf/`, '_blank');
+    
+    // Afficher un message de succès
+    const successAlert = document.createElement('div');
+    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    successAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successAlert.innerHTML = `
+      <i class="fas fa-check-circle"></i> Attestation de remboursement générée avec succès !
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(successAlert);
+    
+    // Supprimer l'alerte après 3 secondes
+    setTimeout(() => {
+      if (successAlert.parentNode) {
+        successAlert.remove();
+      }
+    }, 3000);
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération de l\'attestation:', error);
+    
+    // Afficher un message d'erreur
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    errorAlert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    errorAlert.innerHTML = `
+      <i class="fas fa-exclamation-triangle"></i> Erreur lors de la génération de l'attestation: ${error.message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(errorAlert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+      if (errorAlert.parentNode) {
+        errorAlert.remove();
+      }
+    }, 5000);
+  } finally {
+    // Réactiver le bouton
+    const button = event.target;
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+}
+
+// Aperçu de l'image sélectionnée
+document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'photoInput' && e.target.files && e.target.files[0]){
+    const file = e.target.files[0];
+    
+    // Vérifier la taille du fichier (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Le fichier est trop volumineux. Taille maximum autorisée : 5MB');
+      e.target.value = '';
+      return;
+    }
+    
+    // Vérifier le type de fichier
+    if (!file.type.match('image.*')) {
+      alert('Veuillez sélectionner un fichier image valide (JPG, PNG, GIF)');
+      e.target.value = '';
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(evt){
+      const preview = document.getElementById('photoPreview');
+      const previewWrapper = document.getElementById('photoPreviewWrapper');
+      if (preview && previewWrapper){
+        preview.src = evt.target.result;
+        previewWrapper.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// Fonction pour vérifier les fonds disponibles avant validation
+async function checkFondsDisponibles(pretId) {
+  try {
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/check-fonds/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la vérification des fonds');
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Erreur lors de la vérification des fonds:', error);
+    return null;
+  }
+}
+
+// Fonction pour afficher une alerte de fonds insuffisants
+function showFondsInsuffisantsAlert(pretData) {
+  const alertHtml = `
+    <div class="modal fade" id="fondsInsuffisantsModal" tabindex="-1" aria-labelledby="fondsModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+          <div class="modal-header bg-danger text-white border-0">
+            <h5 class="modal-title" id="fondsModalLabel">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              Fonds Insuffisants
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="text-center mb-4">
+              <div class="alert alert-danger border-0">
+                <i class="fas fa-exclamation-circle text-danger me-2"></i>
+                <strong>Attention :</strong> Les fonds de la caisse sont insuffisants pour octroyer ce prêt.
+              </div>
+            </div>
+            
+            <div class="row">
+              <div class="col-12">
+                <div class="card border-0 bg-light">
+                  <div class="card-body">
+                    <h6 class="card-title text-danger">
+                      <i class="fas fa-info-circle me-2"></i>Détails du Prêt
+                    </h6>
+                    <div class="row">
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Numéro de prêt :</strong></p>
+                        <p class="text-muted">${pretData.numero_pret || 'N/A'}</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Membre :</strong></p>
+                        <p class="text-muted">${pretData.membre?.nom_complet || 'N/A'}</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Montant demandé :</strong></p>
+                        <p class="text-danger fw-bold">${Number(pretData.montant_demande || 0).toLocaleString('fr-FR')} FCFA</p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-2"><strong>Fonds disponibles :</strong></p>
+                        <p class="text-success fw-bold">${Number(pretData.caisse?.fond_disponible || 0).toLocaleString('fr-FR')} FCFA</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="alert alert-warning mt-3 border-0">
+              <i class="fas fa-lightbulb me-2"></i>
+              <strong>Solutions possibles :</strong>
+              <ul class="mb-0 mt-2">
+                <li>Alimenter la caisse avec des fonds supplémentaires</li>
+                <li>Réduire le montant du prêt demandé</li>
+                <li>Attendre que d'autres prêts soient remboursés</li>
+                <li>Mettre le prêt en attente jusqu'à disponibilité des fonds</li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer border-0 bg-light">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="fas fa-times me-2"></i>Fermer
+            </button>
+            <button type="button" class="btn btn-warning" onclick="mettreEnAttentePret(${pretData.id})">
+              <i class="fas fa-clock me-2"></i>Mettre en Attente
+            </button>
+            <button type="button" class="btn btn-primary" onclick="alimenterCaisse(${pretData.caisse?.id})">
+              <i class="fas fa-plus-circle me-2"></i>Alimenter la Caisse
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', alertHtml);
+  const modal = new bootstrap.Modal(document.getElementById('fondsInsuffisantsModal'));
+  modal.show();
+}
+
+// Fonction pour mettre un prêt en attente
+async function mettreEnAttentePret(pretId) {
+  try {
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/mettre_en_attente/`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCSRFToken() 
+      },
+      body: JSON.stringify({
+        motif_attente: 'Fonds insuffisants - Prêt mis en attente'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la mise en attente');
+    }
+    
+    // Fermer le modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('fondsInsuffisantsModal'));
+    modal.hide();
+    
+    // Recharger la liste des prêts
+    loadPrets();
+    
+    // Afficher un message de succès
+    showToast('Prêt mis en attente avec succès', 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la mise en attente:', error);
+    showToast('Erreur lors de la mise en attente', 'error');
+  }
+}
+
+// Fonction pour alimenter la caisse
+function alimenterCaisse(caisseId) {
+  // Fermer le modal actuel
+  const modal = bootstrap.Modal.getInstance(document.getElementById('fondsInsuffisantsModal'));
+  modal.hide();
+  
+  // Rediriger vers la page d'alimentation de la caisse
+  window.location.href = `/gestion-caisses/caisses/${caisseId}/alimenter/`;
+}
+
+// Fonction pour valider un prêt (admin seulement)
+async function validerPret(pretId) {
+  try {
+    // Vérifier les fonds disponibles avant la validation
+    const fondsData = await checkFondsDisponibles(pretId);
+    
+    if (!fondsData) {
+      showToast('Erreur lors de la vérification des fonds', 'error');
+      return;
+    }
+    
+    if (!fondsData.fonds_suffisants) {
+      // Afficher l'alerte de fonds insuffisants
+      showFondsInsuffisantsAlert(fondsData);
+      return;
+    }
+    
+    // Si les fonds sont suffisants, procéder à la validation
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/valider/`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCSRFToken() 
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erreur lors de la validation');
+    }
+    
+    const data = await response.json();
+    
+    // Afficher un message de succès
+    showToast('Prêt validé avec succès !', 'success');
+    
+    // Recharger la liste des prêts
+    loadPrets();
+    
+  } catch (error) {
+    console.error('Erreur lors de la validation:', error);
+    showToast(error.message || 'Erreur lors de la validation', 'error');
+  }
+}
+
+// Fonction pour rejeter un prêt (admin seulement)
+async function rejeterPret(pretId) {
+  const motif = prompt('Motif du rejet :');
+  if (!motif) return;
+  
+  try {
+    const response = await fetch(`/gestion-caisses/api/prets/${pretId}/rejeter/`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCSRFToken() 
+      },
+      body: JSON.stringify({ motif_rejet: motif })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erreur lors du rejet');
+    }
+    
+    // Afficher un message de succès
+    showToast('Prêt rejeté avec succès', 'success');
+    
+    // Recharger la liste des prêts
+    loadPrets();
+    
+  } catch (error) {
+    console.error('Erreur lors du rejet:', error);
+    showToast(error.message || 'Erreur lors du rejet', 'error');
+  }
+}
+
+// Fonction de déconnexion pour le dashboard
+async function handleLogout() {
+  try {
+    const response = await fetch('/gestion-caisses/api/logout/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCSRFToken(),
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      window.location.href = '/gestion-caisses/login/';
+    } else {
+      showToast('Erreur lors de la déconnexion', 'error');
+    }
+  } catch (error) {
+    console.error('Erreur de déconnexion:', error);
+    showToast('Erreur lors de la déconnexion', 'error');
+  }
+}
+
+// ============================================================================
+// FONCTIONS POUR LES RAPPORTS DE CAISSE
+// ============================================================================
+
+async function chargerRapport() {
+  try {
+    const dateDebut = document.getElementById('date-debut').value;
+    const dateFin = document.getElementById('date-fin').value;
+    const typeRapport = document.getElementById('type-rapport').value;
+    
+    // Afficher un indicateur de chargement
+    const contenuRapport = document.getElementById('contenu-rapport');
+    contenuRapport.innerHTML = `
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Chargement...</span>
+        </div>
+        <p class="mt-3">Chargement du rapport...</p>
+      </div>
+    `;
+    
+    // Construire l'URL avec les paramètres
+    const params = new URLSearchParams();
+    if (dateDebut) params.append('date_debut', dateDebut);
+    if (dateFin) params.append('date_fin', dateFin);
+    params.append('type', typeRapport);
+    
+    const response = await fetch(`/gestion-caisses/api/rapports-caisse/?${params}`, {
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors du chargement du rapport');
+    }
+    
+    const rapport = await response.json();
+    afficherRapport(rapport, typeRapport);
+    
+  } catch (error) {
+    console.error('Erreur lors du chargement du rapport:', error);
+    showToast('Erreur lors du chargement du rapport', 'error');
+    
+    const contenuRapport = document.getElementById('contenu-rapport');
+    contenuRapport.innerHTML = `
+      <div class="alert alert-danger">
+        <i class="fas fa-exclamation-triangle"></i>
+        Erreur lors du chargement du rapport: ${error.message}
+      </div>
+    `;
+  }
+}
+
+function afficherRapport(rapport, typeRapport) {
+  const contenuRapport = document.getElementById('contenu-rapport');
+  
+  switch (typeRapport) {
+    case 'general':
+      contenuRapport.innerHTML = afficherRapportGeneral(rapport);
+      break;
+    case 'financier':
+      contenuRapport.innerHTML = afficherRapportFinancier(rapport);
+      break;
+    case 'prets':
+      contenuRapport.innerHTML = afficherRapportPrets(rapport);
+      break;
+    case 'membres':
+      contenuRapport.innerHTML = afficherRapportMembres(rapport);
+      break;
+    case 'echeances':
+      contenuRapport.innerHTML = afficherRapportEcheances(rapport);
+      break;
+    default:
+      contenuRapport.innerHTML = '<div class="alert alert-warning">Type de rapport non reconnu</div>';
+  }
+}
+
+function afficherRapportGeneral(rapport) {
+  return `
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-chart-pie"></i> Rapport Général - ${rapport.caisse.nom}
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6>Informations de la Caisse</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Code:</strong> ${rapport.caisse.code}</li>
+                  <li><strong>Date de création:</strong> ${rapport.caisse.date_creation}</li>
+                  <li><strong>Statut:</strong> ${rapport.caisse.statut}</li>
+                </ul>
+              </div>
+              <div class="col-md-6">
+                <h6>Période du rapport</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Début:</strong> ${rapport.periode.debut || 'Toutes les dates'}</li>
+                  <li><strong>Fin:</strong> ${rapport.periode.fin || 'Toutes les dates'}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📊 Membres</h6>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-primary">${rapport.membres.total}</h3>
+                  <small>Total</small>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-success">${rapport.membres.actifs}</h3>
+                  <small>Actifs</small>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-warning">${rapport.membres.inactifs}</h3>
+                  <small>Inactifs</small>
+                </div>
+              </div>
+            </div>
+            <div class="row text-center mt-3">
+              <div class="col-6">
+                <div class="stat-item">
+                  <h4 class="text-info">${rapport.membres.femmes}</h4>
+                  <small>Femmes</small>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="stat-item">
+                  <h4 class="text-secondary">${rapport.membres.hommes}</h4>
+                  <small>Hommes</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">💰 Prêts</h6>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-primary">${rapport.prets.total}</h3>
+                  <small>Total</small>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-success">${rapport.prets.en_cours}</h3>
+                  <small>En cours</small>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-item">
+                  <h3 class="text-info">${rapport.prets.rembourses}</h3>
+                  <small>Remboursés</small>
+                </div>
+              </div>
+            </div>
+            <div class="row text-center mt-3">
+              <div class="col-6">
+                <div class="stat-item">
+                  <h4 class="text-warning">${rapport.prets.en_retard}</h4>
+                  <small>En retard</small>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="stat-item">
+                  <h4 class="text-danger">${(rapport.prets.montant_moyen || 0).toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Moyenne</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">🏦 Fonds</h6>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-primary">${rapport.fonds.fond_initial.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Fond initial</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-success">${rapport.fonds.fond_disponible.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Fond disponible</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-warning">${rapport.fonds.montant_total_prets.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Total prêts</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-info">${rapport.fonds.solde_disponible.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Solde disponible</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function afficherRapportFinancier(rapport) {
+  return `
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-chart-line"></i> Rapport Financier - ${rapport.caisse.nom}
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6>Informations de la Caisse</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Code:</strong> ${rapport.caisse.code}</li>
+                  <li><strong>Période:</strong> ${rapport.periode.debut || 'Toutes les dates'} - ${rapport.periode.fin || 'Toutes les dates'}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">💰 Fonds Actuels</h6>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-primary">${rapport.fonds_actuels.fond_initial.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Fond initial</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-success">${rapport.fonds_actuels.fond_disponible.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Fond disponible</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-warning">${rapport.fonds_actuels.montant_total_prets.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Total prêts</small>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="stat-item">
+                  <h4 class="text-info">${rapport.fonds_actuels.solde_disponible.toLocaleString('fr-FR')} FCFA</h4>
+                  <small>Solde disponible</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📊 Mouvements de Fonds</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Nombre</th>
+                    <th>Montant Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.mouvements.stats_par_type.map(stat => `
+                    <tr>
+                      <td>${stat.type_mouvement}</td>
+                      <td>${stat.nombre}</td>
+                      <td>${stat.total.toLocaleString('fr-FR')} FCFA</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📈 Évolution des Fonds</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Montant</th>
+                    <th>Solde</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.mouvements.evolution.map(mouvement => `
+                    <tr>
+                      <td>${mouvement.date}</td>
+                      <td><span class="badge bg-${getBadgeColor(mouvement.type)}">${mouvement.type}</span></td>
+                      <td>${mouvement.montant.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${mouvement.solde.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${mouvement.description}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function afficherRapportPrets(rapport) {
+  return `
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-hand-holding-usd"></i> Rapport des Prêts - ${rapport.caisse.nom}
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6>Informations de la Caisse</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Code:</strong> ${rapport.caisse.code}</li>
+                  <li><strong>Période:</strong> ${rapport.periode.debut || 'Toutes les dates'} - ${rapport.periode.fin || 'Toutes les dates'}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📊 Statistiques par Statut</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Statut</th>
+                    <th>Nombre</th>
+                    <th>Montant Total</th>
+                    <th>Montant Moyen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.statistiques.par_statut.map(stat => `
+                    <tr>
+                      <td><span class="badge bg-${getBadgeColor(stat.statut)}">${stat.statut}</span></td>
+                      <td>${stat.nombre}</td>
+                      <td>${(stat.montant_total || 0).toLocaleString('fr-FR')} FCFA</td>
+                      <td>${(stat.montant_moyen || 0).toLocaleString('fr-FR')} FCFA</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">⚠️ Prêts en Retard</h6>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-md-6">
+                <div class="stat-item">
+                  <h3 class="text-danger">${rapport.prets_retard.nombre}</h3>
+                  <small>Nombre de prêts en retard</small>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="stat-item">
+                  <h3 class="text-warning">${rapport.prets_retard.montant_total_retard.toLocaleString('fr-FR')} FCFA</h3>
+                  <small>Montant total en retard</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📋 Détails des Prêts</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Numéro</th>
+                    <th>Membre</th>
+                    <th>Montant Accordé</th>
+                    <th>Montant Remboursé</th>
+                    <th>Montant Restant</th>
+                    <th>Statut</th>
+                    <th>Date Demande</th>
+                    <th>Durée (mois)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.details_prets.map(pret => `
+                    <tr>
+                      <td>${pret.numero}</td>
+                      <td>${pret.membre}</td>
+                      <td>${pret.montant_accord.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${pret.montant_rembourse.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${pret.montant_restant.toLocaleString('fr-FR')} FCFA</td>
+                      <td><span class="badge bg-${getBadgeColor(pret.statut)}">${pret.statut}</span></td>
+                      <td>${pret.date_demande}</td>
+                      <td>${pret.duree_mois}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function afficherRapportMembres(rapport) {
+  return `
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-users"></i> Rapport des Membres - ${rapport.caisse.nom}
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6>Informations de la Caisse</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Code:</strong> ${rapport.caisse.code}</li>
+                  <li><strong>Période:</strong> ${rapport.periode.debut || 'Toutes les dates'} - ${rapport.periode.fin || 'Toutes les dates'}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📊 Par Statut</h6>
+          </div>
+          <div class="card-body">
+            ${rapport.statistiques.par_statut.map(stat => `
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${stat.statut}</span>
+                <span class="badge bg-primary">${stat.nombre}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">👥 Par Sexe</h6>
+          </div>
+          <div class="card-body">
+            ${rapport.statistiques.par_sexe.map(stat => `
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${stat.sexe === 'F' ? 'Femmes' : 'Hommes'}</span>
+                <span class="badge bg-info">${stat.nombre}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">🎭 Par Rôle</h6>
+          </div>
+          <div class="card-body">
+            ${rapport.statistiques.par_role.map(stat => `
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${stat.role}</span>
+                <span class="badge bg-success">${stat.nombre}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📋 Détails des Membres</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Nom Complet</th>
+                    <th>Numéro Carte</th>
+                    <th>Téléphone</th>
+                    <th>Sexe</th>
+                    <th>Rôle</th>
+                    <th>Statut</th>
+                    <th>Date Adhésion</th>
+                    <th>Nombre Prêts</th>
+                    <th>Total Prêts</th>
+                    <th>Total Remboursé</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.details_membres.map(membre => `
+                    <tr>
+                      <td>${membre.nom_complet}</td>
+                      <td>${membre.numero_carte}</td>
+                      <td>${membre.telephone}</td>
+                      <td>${membre.sexe === 'F' ? 'F' : 'M'}</td>
+                      <td><span class="badge bg-secondary">${membre.role}</span></td>
+                      <td><span class="badge bg-${getBadgeColor(membre.statut)}">${membre.statut}</span></td>
+                      <td>${membre.date_adhesion}</td>
+                      <td>${membre.nombre_prets}</td>
+                      <td>${membre.montant_total_prets.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${membre.montant_total_rembourse.toLocaleString('fr-FR')} FCFA</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function afficherRapportEcheances(rapport) {
+  return `
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-calendar-check"></i> Rapport des Échéances - ${rapport.caisse.nom}
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <h6>Informations de la Caisse</h6>
+                <ul class="list-unstyled">
+                  <li><strong>Code:</strong> ${rapport.caisse.code}</li>
+                  <li><strong>Période:</strong> ${rapport.periode.debut || 'Toutes les dates'} - ${rapport.periode.fin || 'Toutes les dates'}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📊 Statistiques Générales</h6>
+          </div>
+          <div class="card-body">
+            <div class="text-center">
+              <h3 class="text-primary">${rapport.statistiques.total_echeances}</h3>
+              <small>Total échéances</small>
+            </div>
+            <div class="text-center mt-3">
+              <h4 class="text-success">${rapport.statistiques.total_montant.toLocaleString('fr-FR')} FCFA</h4>
+              <small>Montant total</small>
+            </div>
+            <div class="text-center mt-3">
+              <h4 class="text-info">${rapport.statistiques.total_paye.toLocaleString('fr-FR')} FCFA</h4>
+              <small>Montant payé</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">⚠️ Échéances en Retard</h6>
+          </div>
+          <div class="card-body">
+            <div class="text-center">
+              <h3 class="text-danger">${rapport.echeances_retard.nombre}</h3>
+              <small>Nombre en retard</small>
+            </div>
+            <div class="text-center mt-3">
+              <h4 class="text-warning">${rapport.echeances_retard.montant_total.toLocaleString('fr-FR')} FCFA</h4>
+              <small>Montant en retard</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📅 Échéances à Venir</h6>
+          </div>
+          <div class="card-body">
+            <div class="text-center">
+              <h3 class="text-info">${rapport.echeances_a_venir.nombre}</h3>
+              <small>Nombre à venir</small>
+            </div>
+            <div class="text-center mt-3">
+              <h4 class="text-primary">${rapport.echeances_a_venir.montant_total.toLocaleString('fr-FR')} FCFA</h4>
+              <small>Montant à venir</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="card-title mb-0">📋 Détails des Échéances</h6>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>N° Échéance</th>
+                    <th>N° Prêt</th>
+                    <th>Membre</th>
+                    <th>Montant Échéance</th>
+                    <th>Montant Payé</th>
+                    <th>Montant Restant</th>
+                    <th>Date Échéance</th>
+                    <th>Date Paiement</th>
+                    <th>Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rapport.details_echeances.map(echeance => `
+                    <tr class="${echeance.en_retard ? 'table-danger' : ''}">
+                      <td>${echeance.numero_echeance}</td>
+                      <td>${echeance.pret_numero}</td>
+                      <td>${echeance.membre}</td>
+                      <td>${echeance.montant_echeance.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${echeance.montant_paye.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${echeance.montant_restant.toLocaleString('fr-FR')} FCFA</td>
+                      <td>${echeance.date_echeance}</td>
+                      <td>${echeance.date_paiement || '-'}</td>
+                      <td><span class="badge bg-${getBadgeColor(echeance.statut)}">${echeance.statut}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getBadgeColor(type) {
+  const colors = {
+    // Statuts de prêts
+    'EN_ATTENTE': 'warning',
+    'EN_ATTENTE_ADMIN': 'warning',
+    'VALIDE': 'info',
+    'REJETE': 'danger',
+    'BLOQUE': 'secondary',
+    'EN_COURS': 'primary',
+    'REMBOURSE': 'success',
+    'EN_RETARD': 'danger',
+    
+    // Statuts de membres
+    'ACTIF': 'success',
+    'INACTIF': 'secondary',
+    'SUSPENDU': 'warning',
+    'RETRAITE': 'info',
+    
+    // Types de mouvements
+    'ALIMENTATION': 'success',
+    'DECAISSEMENT': 'danger',
+    'REMBOURSEMENT': 'info',
+    'FRAIS': 'warning',
+    'AUTRE': 'secondary',
+    
+    // Statuts d'échéances
+    'A_PAYER': 'warning',
+    'PARTIELLEMENT_PAYE': 'info',
+    'PAYE': 'success',
+    'EN_RETARD': 'danger',
+    
+    // Rôles de membres
+    'PRESIDENTE': 'primary',
+    'SECRETAIRE': 'info',
+    'TRESORIERE': 'success',
+    'MEMBRE': 'secondary',
+    
+    // Sexe
+    'F': 'pink',
+    'M': 'blue'
+  };
+  
+  return colors[type] || 'secondary';
+}
+
+async function genererRapportPDF(typeRapport) {
+  try {
+    const dateDebut = document.getElementById('date-debut').value;
+    const dateFin = document.getElementById('date-fin').value;
+    
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Construire l'URL avec les paramètres
+    const params = new URLSearchParams();
+    if (dateDebut) params.append('date_debut', dateDebut);
+    if (dateFin) params.append('date_fin', dateFin);
+    params.append('type', typeRapport);
+    params.append('format', 'pdf');
+    
+    const response = await fetch(`/gestion-caisses/api/rapports-caisse/?${params}`, {
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `rapport_${typeRapport}_${new Date().toISOString().split('T')[0]}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    showToast(`PDF du rapport ${typeRapport} généré avec succès !`, 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    showToast('Erreur lors de la génération du PDF', 'error');
+  } finally {
+    // Restaurer le bouton
+    const button = event.target;
+    button.disabled = false;
+    button.innerHTML = originalText;
+  }
+}
+</script>
+
+<!-- Membres Modal -->
+<div class="modal" tabindex="-1" id="membreModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="membreModalTitle">Nouveau membre</h5>
+        <button type="button" class="btn-close" onclick="closeMembreModal()"></button>
+      </div>
+      <div class="modal-body">
+        <form id="membreForm">
+          {% csrf_token %}
+          <input type="hidden" name="id" />
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Numéro carte d'électeur</label>
+              <input class="form-control" name="numero_carte_electeur" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Téléphone</label>
+              <input class="form-control" name="numero_telephone" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Nom</label>
+              <input class="form-control" name="nom" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Prénoms</label>
+              <input class="form-control" name="prenoms" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Date de naissance</label>
+              <input type="date" class="form-control" name="date_naissance" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Sexe</label>
+              <select class="form-select" name="sexe">
+                <option value="F" selected>Féminin</option>
+                <option value="M">Masculin</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Adresse</label>
+              <textarea class="form-control" name="adresse" rows="2" placeholder="Adresse complète du membre"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Photo</label>
+              <input type="file" class="form-control" name="photo" id="photoInput" accept="image/*" />
+              <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 5MB)</small>
+            </div>
+            <div class="col-md-6">
+              <div id="photoPreviewWrapper" style="display:none; text-align:center;">
+                <img id="photoPreview" alt="Aperçu de la photo" style="max-height:120px; max-width:100%; border-radius:8px; border: 1px solid #ddd;" />
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Rôle</label>
+              <select class="form-select" name="role">
+                <option value="MEMBRE" selected>Membre simple</option>
+                <option value="SECRETAIRE">Secrétaire</option>
+                <option value="PRESIDENTE">Présidente</option>
+                <option value="TRESORIERE">Trésorière</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Statut</label>
+              <select class="form-select" name="statut">
+                <option value="ACTIF" selected>Actif</option>
+                <option value="INACTIF">Inactif</option>
+                <option value="SUSPENDU">Suspendu</option>
+                <option value="RETRAITE">Retraité</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <div id="membreError" class="text-danger mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeMembreModal()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="submitMembre()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Prêts Modal -->
+<div class="modal" tabindex="-1" id="pretModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pretModalTitle">Nouveau prêt</h5>
+        <button type="button" class="btn-close" onclick="closePretModal()"></button>
+      </div>
+      <div class="modal-body">
+        <form id="pretForm">
+          {% csrf_token %}
+          <input type="hidden" name="id" />
+                      <div class="mb-3">
+              <label class="form-label">Membre</label>
+              <select class="form-select" name="membre_id" id="pretMembre" required onchange="checkMemberLoanStatus()"></select>
+              <div id="memberLoanWarning" class="alert alert-warning mt-2" style="display: none;">
+                <i class="fas fa-exclamation-triangle"></i> 
+                Ce membre a déjà un prêt en cours. Il doit d'abord terminer le remboursement de son prêt actuel.
+              </div>
+            </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Montant demandé (FCFA)</label>
+              <input class="form-control" name="montant_demande" type="number" required oninput="updateInterestPreview()" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Durée (mois)</label>
+              <input class="form-control" name="duree_mois" type="number" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Taux d'intérêt (%)</label>
+              <input class="form-control" name="taux_interet" type="number" step="0.01" value="0" oninput="updateInterestPreview()" />
+            </div>
+            <div class="col-12">
+              <div class="alert alert-info" id="interestPreview" style="display: none;">
+                <div class="row">
+                  <div class="col-md-4">
+                    <strong>Montant demandé:</strong><br>
+                    <span id="previewMontantDemande">0</span> FCFA
+                  </div>
+                  <div class="col-md-4">
+                    <strong>Intérêt (0%):</strong><br>
+                    <span id="previewInteret">0</span> FCFA
+                  </div>
+                  <div class="col-md-4">
+                    <strong>Total à rembourser:</strong><br>
+                    <span id="previewTotal" class="text-success fw-bold">0</span> FCFA
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Motif</label>
+              <textarea class="form-control" name="motif" rows="3" required></textarea>
+            </div>
+          </div>
+        </form>
+        <div id="pretError" class="text-danger mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePretModal()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="submitPret()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Fonctions pour la génération de PDFs
+async function generateMembresListePDF(caisseId) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Appeler l'API pour générer le PDF de la liste des membres
+    const response = await fetch(`/gestion-caisses/api/caisses/${caisseId}/membres_liste_pdf/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `liste_membres_caisse_${caisseId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    showToast('PDF de la liste des membres généré avec succès !', 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    showToast('Erreur lors de la génération du PDF', 'error');
+  } finally {
+    // Restaurer le bouton
+    const button = event.target;
+    button.disabled = false;
+    button.innerHTML = originalText;
+  }
+}
+
+async function generateMembrePDF(membreId) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Appeler l'API pour générer le PDF de la fiche membre
+    const response = await fetch(`/gestion-caisses/api/membres/${membreId}/fiche_pdf/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `fiche_membre_${membreId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    showToast('PDF de la fiche membre généré avec succès !', 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    showToast('Erreur lors de la génération du PDF', 'error');
+  } finally {
+    // Restaurer le bouton
+    const button = event.target;
+    button.disabled = false;
+    button.innerHTML = originalText;
+  }
+}
+
+async function generateEcheancesRetardPDF(event) {
+  try {
+    // Afficher un indicateur de chargement
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    // Appeler l'API pour générer le PDF des échéances en retard
+    const response = await fetch(`/gestion-caisses/api/caisses/${USER_CAISE_ID}/echeances_retard_pdf/`, {
+      method: 'GET',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la génération du PDF');
+    }
+    
+    // Télécharger le PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `echeances_retard_${new Date().toISOString().split('T')[0]}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    // Afficher un message de succès
+    showToast('PDF des échéances en retard généré avec succès !', 'success');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    showToast('Erreur lors de la génération du PDF', 'error');
+  } finally {
+    // Restaurer le bouton
+    const button = event.target;
+    button.disabled = false;
+    button.innerHTML = originalText;
+  }
+}
+
+// Fonction de déconnexion pour le dashboard
+async function handleLogout() {
+  try {
+    const response = await fetch('/gestion-caisses/api/logout/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCSRFToken(),
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      window.location.href = '/gestion-caisses/login/';
+    } else {
+      showToast('Erreur lors de la déconnexion', 'error');
+    }
+  } catch (error) {
+    console.error('Erreur de déconnexion:', error);
+    showToast('Erreur lors de la déconnexion', 'error');
+  }
+}
+</script>
+{% endblock %}

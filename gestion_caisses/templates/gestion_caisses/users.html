@@ -1,0 +1,606 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+
+{% block title %}Gestion des Utilisateurs - {{ user_role }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+          <i class="fas fa-users-cog"></i> Gestion des Utilisateurs
+        </h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+          <i class="fas fa-plus"></i> Créer un Utilisateur Clé
+        </button>
+      </div>
+
+      <!-- Statistiques -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card bg-primary text-white">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <h4 class="card-title">Total Utilisateurs</h4>
+                  <h2 id="totalUsers">-</h2>
+                </div>
+                <div class="align-self-center">
+                  <i class="fas fa-users fa-2x"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-success text-white">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <h4 class="card-title">Présidentes</h4>
+                  <h2 id="totalPresidents">-</h2>
+                </div>
+                <div class="align-self-center">
+                  <i class="fas fa-crown fa-2x"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-info text-white">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <h4 class="card-title">Secrétaires</h4>
+                  <h2 id="totalSecretaries">-</h2>
+                </div>
+                <div class="align-self-center">
+                  <i class="fas fa-file-alt fa-2x"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-warning text-white">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <h4 class="card-title">Trésorières</h4>
+                  <h2 id="totalTreasurers">-</h2>
+                </div>
+                <div class="align-self-center">
+                  <i class="fas fa-coins fa-2x"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tableau des utilisateurs -->
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-list"></i> Liste des Utilisateurs
+          </h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped table-hover" id="usersTable">
+              <thead>
+                <tr>
+                  <th>Nom d'utilisateur</th>
+                  <th>Nom complet</th>
+                  <th>Email</th>
+                  <th>Rôle</th>
+                  <th>Caisse</th>
+                  <th>Date création</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Les données seront chargées via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de création d'utilisateur -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-user-plus"></i> Créer un Utilisateur Clé
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="createUserForm">
+          {% csrf_token %}
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nom d'utilisateur *</label>
+              <input type="text" class="form-control" name="username" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mot de passe *</label>
+              <input type="password" class="form-control" name="password" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Prénom *</label>
+              <input type="text" class="form-control" name="first_name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Nom *</label>
+              <input type="text" class="form-control" name="last_name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" name="email">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Caisse *</label>
+              <select class="form-select" name="caisse_id" id="caisseSelect" required onchange="loadKeyMembers()">
+                <option value="">Sélectionner une caisse</option>
+                <!-- Les caisses seront chargées via JavaScript -->
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Membre clé *</label>
+              <select class="form-select" name="membre_id" id="membreSelect" required onchange="fillFormWithMemberData()">
+                <option value="">Sélectionner un membre clé</option>
+                <!-- Les membres clés seront chargés via JavaScript -->
+              </select>
+              <small class="form-text text-muted">
+                Sélectionnez un membre clé (Présidente, Secrétaire, Trésorière) pour créer son compte utilisateur
+              </small>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="createUser()">
+          <i class="fas fa-save"></i> Créer l'utilisateur
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de détails utilisateur -->
+<div class="modal fade" id="userDetailsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-user"></i> Détails de l'utilisateur
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="userDetails">
+          <!-- Les détails seront chargés via JavaScript -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let users = [];
+let caisses = [];
+
+// Charger les données au démarrage
+document.addEventListener('DOMContentLoaded', function() {
+  loadUsers();
+  loadCaisses();
+});
+
+// Charger la liste des utilisateurs
+async function loadUsers() {
+  try {
+    const response = await fetch('/gestion-caisses/api/users/', {
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken')
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Gérer la pagination - extraire les résultats
+      if (data.results) {
+        users = data.results;
+      } else {
+        users = data;
+      }
+      
+      renderUsersTable();
+      updateStats();
+    } else {
+      showNotification('Erreur lors du chargement des utilisateurs', 'error');
+    }
+  } catch (error) {
+    console.error('Erreur:', error);
+    showNotification('Erreur lors du chargement des utilisateurs', 'error');
+  }
+}
+
+// Charger la liste des caisses
+async function loadCaisses() {
+  try {
+    console.log('Chargement des caisses...');
+    const response = await fetch('/gestion-caisses/api/caisses/', {
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken')
+      }
+    });
+    
+    console.log('Réponse caisses:', response.status, response.statusText);
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Données reçues:', data);
+      
+      // Gérer la pagination - extraire les résultats
+      if (data.results) {
+        caisses = data.results;
+        console.log('Caisses extraites de la pagination:', caisses);
+      } else {
+        caisses = data;
+        console.log('Caisses directes:', caisses);
+      }
+      
+      renderCaissesSelect();
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Erreur API caisses:', errorData);
+      showNotification(`Erreur lors du chargement des caisses: ${errorData.detail || response.statusText}`, 'error');
+    }
+  } catch (error) {
+    console.error('Erreur réseau caisses:', error);
+    showNotification('Erreur lors du chargement des caisses', 'error');
+  }
+}
+
+// Afficher le tableau des utilisateurs
+function renderUsersTable() {
+  const tbody = document.querySelector('#usersTable tbody');
+  tbody.innerHTML = '';
+  
+  users.forEach(user => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${user.username}</td>
+      <td>${user.first_name} ${user.last_name}</td>
+      <td>${user.email || '-'}</td>
+      <td>
+        <span class="badge bg-${getRoleBadgeColor(user.role)}">
+          ${getRoleLabel(user.role)}
+        </span>
+      </td>
+      <td>${getUserCaisse(user) || '-'}</td>
+      <td>${formatDate(user.date_joined)}</td>
+      <td>
+        <button class="btn btn-sm btn-info" onclick="viewUserDetails(${user.id})">
+          <i class="fas fa-eye"></i>
+        </button>
+        <button class="btn btn-sm btn-warning" onclick="resetPassword(${user.id})">
+          <i class="fas fa-key"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+// Afficher le select des caisses
+function renderCaissesSelect() {
+  const select = document.querySelector('#caisseSelect');
+  select.innerHTML = '<option value="">Sélectionner une caisse</option>';
+  
+  caisses.forEach(caisse => {
+    const option = document.createElement('option');
+    option.value = caisse.id;
+    option.textContent = `${caisse.code} - ${caisse.nom_association}`;
+    select.appendChild(option);
+  });
+}
+
+// Charger les membres clés d'une caisse
+async function loadKeyMembers() {
+  const caisseId = document.getElementById('caisseSelect').value;
+  const membreSelect = document.getElementById('membreSelect');
+  
+  console.log('Chargement des membres clés pour la caisse:', caisseId);
+  
+  // Réinitialiser le select des membres
+  membreSelect.innerHTML = '<option value="">Sélectionner un membre existant</option>';
+  
+  if (!caisseId) {
+    console.log('Aucune caisse sélectionnée');
+    return;
+  }
+  
+  try {
+    const url = `/gestion-caisses/api/users/key_members_by_caisse/?caisse_id=${caisseId}`;
+    console.log('Appel API:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken')
+      }
+    });
+    
+    console.log('Réponse API:', response.status, response.statusText);
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Données reçues:', data);
+      
+      if (data.success && data.key_members && data.key_members.length > 0) {
+        console.log(`Trouvé ${data.key_members.length} membres clés`);
+        
+        data.key_members.forEach(membre => {
+          const option = document.createElement('option');
+          option.value = membre.id;
+          option.textContent = `${membre.nom_complet} (${getRoleLabel(membre.role)})`;
+          option.dataset.membre = JSON.stringify(membre);
+          membreSelect.appendChild(option);
+          console.log('Option ajoutée:', membre.nom_complet, membre.role);
+        });
+        
+        // L'event listener est maintenant géré par l'attribut onchange du select
+      } else {
+        console.log('Aucun membre clé trouvé');
+        membreSelect.innerHTML = '<option value="">Aucun membre clé trouvé pour cette caisse</option>';
+      }
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Erreur API:', errorData);
+      showNotification(`Erreur lors du chargement des membres clés: ${errorData.detail || response.statusText}`, 'error');
+    }
+  } catch (error) {
+    console.error('Erreur réseau:', error);
+    showNotification('Erreur lors du chargement des membres clés', 'error');
+  }
+}
+
+// Remplir le formulaire avec les données d'un membre
+function fillFormWithMemberData() {
+  const membreSelect = document.getElementById('membreSelect');
+  const selectedOption = membreSelect.options[membreSelect.selectedIndex];
+  
+  if (!membreSelect.value || !selectedOption.dataset.membre) {
+    return;
+  }
+  
+  try {
+    const membre = JSON.parse(selectedOption.dataset.membre);
+    console.log('Remplissage des données pour le membre:', membre);
+    
+    // Extraire le prénom et le nom de manière plus robuste
+    const nomParts = membre.nom_complet.split(' ');
+    let prenom = '';
+    let nom = '';
+    
+    if (nomParts.length === 1) {
+      // Un seul nom
+      nom = nomParts[0];
+    } else if (nomParts.length === 2) {
+      // Prénom + Nom
+      prenom = nomParts[0];
+      nom = nomParts[1];
+    } else {
+      // Plus de 2 parties : premier = prénom, reste = nom
+      prenom = nomParts[0];
+      nom = nomParts.slice(1).join(' ');
+    }
+    
+    // Remplir les champs du formulaire
+    const firstNameInput = document.querySelector('input[name="first_name"]');
+    const lastNameInput = document.querySelector('input[name="last_name"]');
+    
+    if (firstNameInput) firstNameInput.value = prenom;
+    if (lastNameInput) lastNameInput.value = nom;
+    
+    // Afficher une notification
+    showNotification(`Informations remplies pour ${membre.nom_complet} (${getRoleLabel(membre.role)})`, 'info');
+  } catch (error) {
+    console.error('Erreur lors du parsing des données du membre:', error);
+    showNotification('Erreur lors du chargement des données du membre', 'error');
+  }
+}
+
+// Mettre à jour les statistiques
+function updateStats() {
+  const totalUsers = users.length;
+  const totalPresidents = users.filter(u => u.role === 'PRESIDENTE').length;
+  const totalSecretaries = users.filter(u => u.role === 'SECRETAIRE').length;
+  const totalTreasurers = users.filter(u => u.role === 'TRESORIERE').length;
+  
+  document.getElementById('totalUsers').textContent = totalUsers;
+  document.getElementById('totalPresidents').textContent = totalPresidents;
+  document.getElementById('totalSecretaries').textContent = totalSecretaries;
+  document.getElementById('totalTreasurers').textContent = totalTreasurers;
+}
+
+// Créer un nouvel utilisateur
+async function createUser() {
+  const form = document.getElementById('createUserForm');
+  const formData = new FormData(form);
+  
+  // Préparer les données
+  const userData = {
+    username: formData.get('username'),
+    password: formData.get('password'),
+    first_name: formData.get('first_name'),
+    last_name: formData.get('last_name'),
+    email: formData.get('email'),
+    caisse_id: formData.get('caisse_id'),
+    membre_id: formData.get('membre_id')
+  };
+  
+  try {
+    const response = await fetch('/gestion-caisses/api/users/create_key_member/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(userData)
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      showNotification(data.message, 'success');
+      form.reset();
+      // Réinitialiser aussi le select des membres
+      document.getElementById('membreSelect').innerHTML = '<option value="">Sélectionner un membre existant</option>';
+      bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+      loadUsers();
+    } else {
+      showNotification(data.detail || 'Erreur lors de la création', 'error');
+    }
+  } catch (error) {
+    console.error('Erreur:', error);
+    showNotification('Erreur lors de la création de l\'utilisateur', 'error');
+  }
+}
+
+// Voir les détails d'un utilisateur
+function viewUserDetails(userId) {
+  const user = users.find(u => u.id === userId);
+  if (!user) return;
+  
+  const detailsDiv = document.getElementById('userDetails');
+  detailsDiv.innerHTML = `
+    <div class="row">
+      <div class="col-md-6">
+        <strong>Nom d'utilisateur:</strong><br>
+        ${user.username}
+      </div>
+      <div class="col-md-6">
+        <strong>Nom complet:</strong><br>
+        ${user.first_name} ${user.last_name}
+      </div>
+      <div class="col-md-6">
+        <strong>Email:</strong><br>
+        ${user.email || '-'}
+      </div>
+      <div class="col-md-6">
+        <strong>Rôle:</strong><br>
+        <span class="badge bg-${getRoleBadgeColor(user.role)}">
+          ${getRoleLabel(user.role)}
+        </span>
+      </div>
+      <div class="col-md-6">
+        <strong>Date de création:</strong><br>
+        ${formatDate(user.date_joined)}
+      </div>
+      <div class="col-md-6">
+        <strong>Dernière connexion:</strong><br>
+        ${user.last_login ? formatDate(user.last_login) : 'Jamais'}
+      </div>
+    </div>
+  `;
+  
+  new bootstrap.Modal(document.getElementById('userDetailsModal')).show();
+}
+
+// Réinitialiser le mot de passe
+async function resetPassword(userId) {
+  if (!confirm('Êtes-vous sûr de vouloir réinitialiser le mot de passe de cet utilisateur ?')) {
+    return;
+  }
+  
+  const newPassword = prompt('Entrez le nouveau mot de passe:');
+  if (!newPassword) return;
+  
+  try {
+    const response = await fetch(`/gestion-caisses/api/users/${userId}/`, {
+      method: 'PATCH',
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        password: newPassword
+      })
+    });
+    
+    if (response.ok) {
+      showNotification('Mot de passe réinitialisé avec succès', 'success');
+    } else {
+      showNotification('Erreur lors de la réinitialisation du mot de passe', 'error');
+    }
+  } catch (error) {
+    console.error('Erreur:', error);
+    showNotification('Erreur lors de la réinitialisation du mot de passe', 'error');
+  }
+}
+
+// Fonctions utilitaires
+function getRoleBadgeColor(role) {
+  switch (role) {
+    case 'PRESIDENTE': return 'success';
+    case 'SECRETAIRE': return 'info';
+    case 'TRESORIERE': return 'warning';
+    default: return 'secondary';
+  }
+}
+
+function getRoleLabel(role) {
+  switch (role) {
+    case 'PRESIDENTE': return 'Présidente';
+    case 'SECRETAIRE': return 'Secrétaire';
+    case 'TRESORIERE': return 'Trésorière';
+    default: return role;
+  }
+}
+
+function getUserCaisse(user) {
+  return user.caisse_nom || '-';
+}
+
+function formatDate(dateString) {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleDateString('fr-FR');
+}
+
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+function showNotification(message, type) {
+  // Implémentation de la notification (à adapter selon votre système)
+  alert(message);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content_title %}
+    <h1>🔍 Journal d'Audit - Suivi des Actions Utilisateurs</h1>
+{% endblock %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+{% endblock %}
+
+{% block content %}
+    <!-- Statistiques d'audit -->
+    <div class="module" style="margin-bottom: 20px;">
+        <h2>📊 Statistiques d'Audit</h2>
+        <div class="hscroll" style="margin: 20px 0;">
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #1976d2;">Actions Aujourd'hui</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0; color: #1976d2;">{{ actions_today }}</p>
+            </div>
+            
+            <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #7b1fa2;">Total Actions</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0; color: #7b1fa2;">{{ cl.queryset.count }}</p>
+            </div>
+            
+            <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #388e3c;">Utilisateurs Actifs</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0; color: #388e3c;">{{ actions_by_user|length }}</p>
+            </div>
+            
+            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
+                <h3 style="margin: 0; color: #f57c00;">Modèles Surveillés</h3>
+                <p style="font-size: 24px; font-weight: bold; margin: 10px 0; color: #f57c00;">{{ actions_by_model|length }}</p>
+            </div>
+        </div>
+        
+        <!-- Graphiques des actions par type -->
+        <div class="two-col" style="margin: 20px 0;">
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                <h3 style="margin: 0 0 15px 0; color: #333;">Actions par Type</h3>
+                {% for action in actions_by_type %}
+                <div style="display: flex; justify-content: space-between; margin: 8px 0; padding: 5px 0; border-bottom: 1px solid #eee;">
+                    <span style="font-weight: 500;">{{ action.action }}</span>
+                    <span style="background: #1976d2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">{{ action.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd;">
+                <h3 style="margin: 0 0 15px 0; color: #333;">Actions par Modèle</h3>
+                {% for model in actions_by_model %}
+                <div style="display: flex; justify-content: space-between; margin: 8px 0; padding: 5px 0; border-bottom: 1px solid #eee;">
+                    <span style="font-weight: 500;">{{ model.modele }}</span>
+                    <span style="background: #7b1fa2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">{{ model.count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Top utilisateurs -->
+        <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin: 20px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #333;">Top 10 Utilisateurs les Plus Actifs</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                {% for user in actions_by_user %}
+                <div style="background: #f5f5f5; padding: 10px; border-radius: 6px; text-align: center;">
+                    <div style="font-weight: 500; color: #333;">{{ user.utilisateur__username|default:"Utilisateur Anonyme" }}</div>
+                    <div style="font-size: 18px; font-weight: bold; color: #1976d2;">{{ user.count }}</div>
+                    <div style="font-size: 12px; color: #666;">actions</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Liste des actions d'audit -->
+    <div class="module">
+        <h2>📋 Détail des Actions d'Audit</h2>
+        {{ block.super }}
+    </div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .hscroll {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(220px, 1fr);
+    gap: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 1100px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}

@@ -1,0 +1,327 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Tableau de bord - Agent {{ agent.nom_complet }}{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .dashboard-container {
+        padding: 20px;
+        background-color: #f8f9fa;
+        min-height: 100vh;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+    }
+    
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+    
+    .content-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+    }
+    
+    .content-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .content-card h2 {
+        margin: 0 0 20px 0;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+    }
+    
+    .table-responsive {
+        overflow-x: auto;
+    }
+    
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .table th,
+    .table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .table tr:hover {
+        background-color: #f5f5f5;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .status-active {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    
+    .status-en-cours {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-rembourse {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .agent-info {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .agent-info h1 {
+        margin: 0 0 10px 0;
+        font-size: 24px;
+    }
+    
+    .agent-info p {
+        margin: 5px 0;
+        opacity: 0.9;
+    }
+    
+    .quick-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-success:hover {
+        background-color: #1e7e34;
+    }
+    
+    @media (max-width: 768px) {
+        .content-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Informations de l'agent -->
+    <div class="agent-info">
+        <h1>👋 Bonjour, {{ agent.nom_complet }}</h1>
+        <p><strong>Matricule:</strong> {{ agent.matricule }}</p>
+        <p><strong>Zone de responsabilité:</strong> 
+            {% if agent.region %}
+                {{ agent.region.nom }}
+                {% if agent.prefecture %}, {{ agent.prefecture.nom }}{% endif %}
+            {% else %}
+                Toutes les régions
+            {% endif %}
+        </p>
+        <p><strong>Date d'embauche:</strong> {{ agent.date_embauche|date:"d/m/Y" }}</p>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total Caisses</h3>
+            <p class="stat-value">{{ stats.total_caisses }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Caisses Actives</h3>
+            <p class="stat-value">{{ stats.caisses_actives }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Total Membres</h3>
+            <p class="stat-value">{{ stats.total_membres }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Prêts Actifs</h3>
+            <p class="stat-value">{{ stats.total_prets_actifs }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Fonds Totaux</h3>
+            <p class="stat-value">{{ stats.total_fonds|floatformat:0 }} FCFA</p>
+        </div>
+        <div class="stat-card">
+            <h3>Montant Prêts</h3>
+            <p class="stat-value">{{ stats.total_prets_montant|floatformat:0 }} FCFA</p>
+        </div>
+    </div>
+
+    <!-- Actions rapides -->
+    <div class="quick-actions">
+        <a href="{% url 'gestion_caisses:agent_caisses_list' %}" class="btn btn-primary">
+            📋 Voir mes caisses
+        </a>
+        <a href="{% url 'admin:gestion_caisses_caisse_changelist' %}" class="btn btn-success">
+            🔧 Gérer les caisses
+        </a>
+    </div>
+
+    <!-- Contenu principal -->
+    <div class="content-grid">
+        <!-- Prêts récents -->
+        <div class="content-card">
+            <h2>📊 Prêts Récents</h2>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>N° Prêt</th>
+                            <th>Membre</th>
+                            <th>Caisse</th>
+                            <th>Montant</th>
+                            <th>Statut</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pret in prets_recents %}
+                        <tr>
+                            <td>{{ pret.numero_pret }}</td>
+                            <td>{{ pret.membre.nom_complet }}</td>
+                            <td>{{ pret.caisse.nom_association }}</td>
+                            <td>{{ pret.montant_demande|floatformat:0 }} FCFA</td>
+                            <td>
+                                <span class="status-badge status-{{ pret.statut|lower }}">
+                                    {{ pret.get_statut_display }}
+                                </span>
+                            </td>
+                            <td>{{ pret.date_demande|date:"d/m/Y" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #666;">
+                                Aucun prêt récent
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Mouvements récents -->
+        <div class="content-card">
+            <h2>💰 Mouvements Récents</h2>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Caisse</th>
+                            <th>Montant</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mouvement in mouvements_recents %}
+                        <tr>
+                            <td>{{ mouvement.get_type_mouvement_display }}</td>
+                            <td>{{ mouvement.caisse.nom_association }}</td>
+                            <td>{{ mouvement.montant|floatformat:0 }} FCFA</td>
+                            <td>{{ mouvement.date_mouvement|date:"d/m/Y" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: #666;">
+                                Aucun mouvement récent
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Actualisation automatique des statistiques
+setInterval(function() {
+    fetch('{% url "gestion_caisses:agent_stats_api" %}')
+        .then(response => response.json())
+        .then(data => {
+            // Mettre à jour les statistiques si nécessaire
+            console.log('Statistiques mises à jour:', data);
+        })
+        .catch(error => console.error('Erreur lors de la mise à jour:', error));
+}, 30000); // Actualiser toutes les 30 secondes
+</script>
+{% endblock %}

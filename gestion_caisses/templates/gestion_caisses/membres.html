@@ -1,0 +1,912 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+
+{% block title %}Gestion des Membres - Gestion des Caisses{% endblock %}
+
+{% block extra_css %}
+<style>
+    .membres-container {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    /* Forcer la visibilité des champs problématiques */
+    #membreForm select[name="sexe"],
+    #membreForm input[name="photo"],
+    #membreForm .col-md-6:has(select[name="sexe"]),
+    #membreForm .col-md-6:has(input[name="photo"]) {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: static !important;
+        height: auto !important;
+        width: auto !important;
+        overflow: visible !important;
+    }
+    
+    /* Debug: bordures colorées pour identifier les champs */
+    #membreForm select[name="sexe"] {
+        border: 3px solid red !important;
+        background-color: #fff3cd !important;
+    }
+    
+    #membreForm input[name="photo"] {
+        border: 3px solid blue !important;
+        background-color: #d1ecf1 !important;
+    }
+    
+    /* S'assurer que les colonnes sont visibles */
+    .col-md-6 {
+        display: block !important;
+        visibility: visible !important;
+    }
+    
+    /* Forcer la visibilité du modal et de son contenu */
+    .modal {
+        z-index: 9999 !important;
+    }
+    
+    .modal-dialog {
+        max-width: 90% !important;
+    }
+    
+    .modal-body {
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+    }
+    
+    /* Forcer l'affichage de tous les champs du formulaire */
+    #membreForm * {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* Styles spécifiques pour les champs problématiques */
+    #membreForm select[name="sexe"] {
+        border: 3px solid red !important;
+        background-color: #fff3cd !important;
+        min-height: 38px !important;
+        padding: 8px 12px !important;
+    }
+    
+    #membreForm input[name="photo"] {
+        border: 3px solid blue !important;
+        background-color: #d1ecf1 !important;
+        min-height: 38px !important;
+        padding: 8px 12px !important;
+    }
+    
+    /* S'assurer que les labels sont visibles */
+    #membreForm label {
+        display: block !important;
+        margin-bottom: 5px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Debug: afficher les informations de débogage */
+    .debug-info {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        font-family: monospace;
+        font-size: 12px;
+    }
+    
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+    
+    .add-membre-btn {
+        background: #10b981;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        font-weight: 500;
+    }
+    
+    .add-membre-btn:hover {
+        background: #059669;
+    }
+    
+    .filters {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .filters h3 {
+        margin-bottom: 15px;
+        color: #1f2937;
+    }
+    
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .filter-group label {
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #374151;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .membres-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    
+    .membre-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid #10b981;
+    }
+    
+    .membre-header {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .membre-photo {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b7280;
+        font-size: 1.5em;
+    }
+    
+    .membre-info h4 {
+        margin: 0 0 5px 0;
+        color: #1f2937;
+        font-size: 1.1em;
+    }
+    
+    .membre-caisse {
+        color: #6b7280;
+        font-size: 0.9em;
+    }
+    
+    .membre-details {
+        margin-bottom: 15px;
+    }
+    
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 0.9em;
+    }
+    
+    .detail-label {
+        color: #6b7280;
+    }
+    
+    .detail-value {
+        color: #1f2937;
+        font-weight: 500;
+    }
+    
+    .membre-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .action-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        text-decoration: none;
+        font-size: 0.9em;
+        text-align: center;
+        flex: 1;
+    }
+    
+    .btn-view {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .btn-edit {
+        background: #f59e0b;
+        color: white;
+    }
+    
+    .btn-delete {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+    
+    .empty-state h3 {
+        margin-bottom: 10px;
+        color: #1f2937;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="membres-container">
+    <div class="page-header">
+        <h1>Gestion des Membres</h1>
+        <button class="add-membre-btn" onclick="openMembreModal()">+ Nouveau Membre</button>
+    </div>
+    
+    <!-- Filtres -->
+    <div class="filters">
+        <h3>Filtres</h3>
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="filter-caisse">Caisse</label>
+                <select id="filter-caisse">
+                    <option value="">Toutes les caisses</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-commune">Commune</label>
+                <select id="filter-commune">
+                    <option value="">Toutes les communes</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filter-status">Statut</label>
+                <select id="filter-status">
+                    <option value="">Tous les statuts</option>
+                    <option value="actif">Actif</option>
+                    <option value="inactif">Inactif</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div id="membres-content">
+        <div class="empty-state">
+            <h3>Chargement des membres...</h3>
+            <p>Veuillez patienter pendant le chargement des données.</p>
+        </div>
+    </div>
+</div>
+<!-- Modal création membre -->
+<div class="modal" tabindex="-1" id="membreModal">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nouveau membre</h5>
+        <button type="button" class="btn-close" onclick="closeMembreModal()"></button>
+      </div>
+      <div class="modal-body" style="max-height: 80vh; overflow-y: auto;">
+        <div id="membreLoading" style="display:none; text-align:center; margin-bottom:10px;">
+          <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"><span class="visually-hidden">Chargement...</span></div>
+          <div style="margin-top:8px;color:#6b7280;">Chargement des données...</div>
+        </div>
+        <form id="membreForm">
+          {% csrf_token %}
+          <input type="hidden" name="membre_id" id="membre_id" />
+          <div class="row g-3">
+            <!-- Informations d'identification -->
+            <div class="col-md-6">
+              <label class="form-label">Numéro carte d'électeur <span class="text-danger">*</span></label>
+              <input class="form-control" name="numero_carte_electeur" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Téléphone</label>
+              <input class="form-control" name="numero_telephone" placeholder="+22890123456" />
+            </div>
+            
+            <!-- Informations personnelles -->
+            <div class="col-md-6">
+              <label class="form-label">Nom <span class="text-danger">*</span></label>
+              <input class="form-control" name="nom" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Prénoms <span class="text-danger">*</span></label>
+              <input class="form-control" name="prenoms" required />
+            </div>
+            
+            <div class="col-md-6">
+              <label class="form-label">Date de naissance <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" name="date_naissance" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Sexe</label>
+              <select class="form-select" name="sexe">
+                <option value="F" selected>Féminin</option>
+                <option value="M">Masculin</option>
+              </select>
+            </div>
+            
+            <div class="col-12">
+              <label class="form-label">Adresse</label>
+              <textarea class="form-control" name="adresse" rows="2" placeholder="Adresse complète du membre"></textarea>
+            </div>
+            
+            <!-- Photo -->
+            <div class="col-md-6">
+              <label class="form-label">Photo</label>
+              <input type="file" class="form-control" name="photo" id="photoInput" accept="image/*" />
+              <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 5MB)</small>
+            </div>
+            <div class="col-md-6">
+              <div id="photoPreviewWrapper" style="display:none; text-align:center;">
+                <img id="photoPreview" alt="Aperçu de la photo" style="max-height:120px; max-width:100%; border-radius:8px; border: 1px solid #ddd;" />
+              </div>
+            </div>
+            
+            <!-- Rôle et statut -->
+            <div class="col-md-6">
+              <label class="form-label">Rôle</label>
+              <select class="form-select" name="role">
+                <option value="MEMBRE" selected>Membre simple</option>
+                <option value="SECRETAIRE">Secrétaire</option>
+                <option value="PRESIDENTE">Présidente</option>
+                <option value="TRESORIERE">Trésorière</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Statut</label>
+              <select class="form-select" name="statut">
+                <option value="ACTIF" selected>Actif</option>
+                <option value="INACTIF">Inactif</option>
+                <option value="SUSPENDU">Suspendu</option>
+                <option value="RETRAITE">Retraité</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <div id="membreError" class="text-danger mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeMembreModal()">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="submitMembre()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== CHARGEMENT DE LA PAGE MEMBRES ===');
+    
+    // Debug: vérifier la structure du DOM
+    setTimeout(() => {
+        debugFormStructure();
+    }, 1000);
+    
+    ensureFormFields();
+    fetchUserContext();
+    loadCaisses();
+let USER_CAISE_ID = null;
+
+function debugFormStructure() {
+    console.log('=== DEBUG STRUCTURE DU FORMULAIRE ===');
+    
+    const form = document.getElementById('membreForm');
+    if (!form) {
+        console.error('❌ Formulaire non trouvé!');
+        return;
+    }
+    
+    console.log('✅ Formulaire trouvé:', form);
+    
+    // Vérifier tous les champs
+    const fields = form.querySelectorAll('input, select, textarea');
+    console.log('Nombre total de champs:', fields.length);
+    
+    fields.forEach((field, index) => {
+        console.log(`${index + 1}. ${field.name || field.id || 'sans nom'}:`, {
+            type: field.type || field.tagName,
+            visible: field.offsetParent !== null,
+            display: window.getComputedStyle(field).display,
+            visibility: window.getComputedStyle(field).visibility,
+            opacity: window.getComputedStyle(field).opacity
+        });
+    });
+    
+    // Vérifier spécifiquement les champs problématiques
+    const sexeField = form.querySelector('select[name="sexe"]');
+    const photoField = form.querySelector('input[name="photo"]');
+    
+    console.log('=== CHAMPS PROBLÉMATIQUES ===');
+    console.log('Sexe:', sexeField ? {
+        found: true,
+        visible: sexeField.offsetParent !== null,
+        display: window.getComputedStyle(sexeField).display,
+        parent: sexeField.closest('.col-md-6')
+    } : { found: false });
+    
+    console.log('Photo:', photoField ? {
+        found: true,
+        visible: photoField.offsetParent !== null,
+        display: window.getComputedStyle(photoField).display,
+        parent: photoField.closest('.col-md-6')
+    } : { found: false });
+}
+
+function fetchUserContext(){
+    fetch('/gestion-caisses/api/user-context/', { headers: { 'X-CSRFToken': getCSRFToken() }})
+      .then(r=>r.json()).then(data=>{ USER_CAISE_ID = data.caisse_id || null; });
+}
+
+function openMembreModal(){
+    console.log('=== OUVERTURE MODAL MEMBRE ===');
+    
+    const form = document.getElementById('membreForm');
+    console.log('Form trouvé:', form);
+    
+    form.reset();
+    document.getElementById('membre_id').value = '';
+    
+    // Vérifier et initialiser les champs
+    const sexeSelect = form.querySelector('select[name="sexe"]');
+    console.log('Champ sexe trouvé:', sexeSelect);
+    if (sexeSelect) {
+        sexeSelect.value = 'F';
+        console.log('Valeur sexe définie:', sexeSelect.value);
+        
+        // Forcer la visibilité avec tous les styles possibles
+        sexeSelect.style.display = 'block';
+        sexeSelect.style.visibility = 'visible';
+        sexeSelect.style.opacity = '1';
+        sexeSelect.style.position = 'static';
+        sexeSelect.style.height = 'auto';
+        sexeSelect.style.width = 'auto';
+        sexeSelect.style.overflow = 'visible';
+        sexeSelect.style.border = '3px solid red';
+        sexeSelect.style.backgroundColor = '#fff3cd';
+        
+        // Vérifier le parent
+        const sexeParent = sexeSelect.closest('.col-md-6');
+        if (sexeParent) {
+            sexeParent.style.display = 'block';
+            sexeParent.style.visibility = 'visible';
+            sexeParent.style.opacity = '1';
+            sexeParent.style.position = 'static';
+            sexeParent.style.height = 'auto';
+            sexeParent.style.width = 'auto';
+            console.log('Parent sexe visible:', sexeParent.offsetParent !== null);
+        }
+    }
+    
+    const statutSelect = form.querySelector('select[name="statut"]');
+    if (statutSelect) statutSelect.value = 'ACTIF';
+    
+    const roleSelect = form.querySelector('select[name="role"]');
+    if (roleSelect) roleSelect.value = 'MEMBRE';
+    
+    // Vérifier le champ photo
+    const photoInput = document.getElementById('photoInput');
+    console.log('Champ photo trouvé:', photoInput);
+    if (photoInput) {
+        photoInput.value = '';
+        photoInput.style.display = 'block';
+        photoInput.style.visibility = 'visible';
+        photoInput.style.opacity = '1';
+        photoInput.style.position = 'static';
+        photoInput.style.height = 'auto';
+        photoInput.style.width = 'auto';
+        photoInput.style.overflow = 'visible';
+        photoInput.style.border = '3px solid blue';
+        photoInput.style.backgroundColor = '#d1ecf1';
+        
+        // Vérifier le parent
+        const photoParent = photoInput.closest('.col-md-6');
+        if (photoParent) {
+            photoParent.style.display = 'block';
+            photoParent.style.visibility = 'visible';
+            photoParent.style.opacity = '1';
+            photoParent.style.position = 'static';
+            photoParent.style.height = 'auto';
+            photoParent.style.width = 'auto';
+            console.log('Parent photo visible:', photoParent.offsetParent !== null);
+        }
+    }
+    
+    // Masquer l'aperçu de photo
+    const previewWrapper = document.getElementById('photoPreviewWrapper');
+    if (previewWrapper) previewWrapper.style.display = 'none';
+    
+    document.querySelector('#membreModal .modal-title').textContent = 'Nouveau membre';
+    const modal = new bootstrap.Modal(document.getElementById('membreModal'));
+    modal.show();
+    
+    // Vérifier après ouverture et forcer l'affichage
+    setTimeout(() => {
+        console.log('=== VÉRIFICATION APRÈS OUVERTURE ===');
+        
+        // Forcer l'affichage de tous les champs
+        const allFields = form.querySelectorAll('input, select, textarea, label');
+        allFields.forEach(field => {
+            field.style.display = 'block';
+            field.style.visibility = 'visible';
+            field.style.opacity = '1';
+        });
+        
+        const sexeVisible = sexeSelect && sexeSelect.offsetParent !== null;
+        const photoVisible = photoInput && photoInput.offsetParent !== null;
+        console.log('Sexe visible après ouverture:', sexeVisible);
+        console.log('Photo visible après ouverture:', photoVisible);
+        
+        if (!sexeVisible || !photoVisible) {
+            console.warn('⚠️ Certains champs ne sont pas visibles!');
+            console.log('Tentative de correction forcée...');
+            
+            // Tentative de correction forcée
+            if (sexeSelect) {
+                sexeSelect.style.cssText = 'display: block !important; visibility: visible !important; opacity: 1 !important; position: static !important; height: auto !important; width: auto !important; border: 3px solid red !important; background-color: #fff3cd !important;';
+            }
+            if (photoInput) {
+                photoInput.style.cssText = 'display: block !important; visibility: visible !important; opacity: 1 !important; position: static !important; height: auto !important; width: auto !important; border: 3px solid blue !important; background-color: #d1ecf1 !important;';
+            }
+            
+            alert('Problème de visibilité détecté. Correction forcée appliquée. Vérifiez la console pour plus de détails.');
+        } else {
+            console.log('✅ Tous les champs sont visibles!');
+        }
+    }, 1000);
+}
+function closeMembreModal(){
+    const modalEl = document.getElementById('membreModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+}
+
+async function submitMembre(){
+    try {
+        const form = document.getElementById('membreForm');
+        const formData = new FormData(form);
+        if (!USER_CAISE_ID){
+            document.getElementById('membreError').textContent = 'Aucune caisse liée à votre profil.';
+            document.getElementById('membreError').style.display = 'block';
+            return;
+        }
+        formData.append('caisse_id', USER_CAISE_ID);
+        const membreId = document.getElementById('membre_id').value;
+        const isEdit = Boolean(membreId);
+        const url = isEdit ? `/gestion-caisses/api/membres/${membreId}/` : '/gestion-caisses/api/membres/';
+        const method = isEdit ? 'PATCH' : 'POST';
+        const res = await fetch(url, {
+            method,
+            headers: { 'X-CSRFToken': getCSRFToken() },
+            body: formData
+        });
+        if (!res.ok){
+            const err = await res.json().catch(()=>({}));
+            throw new Error(err?.detail || err?.message || 'Erreur de création');
+        }
+        closeMembreModal();
+        loadMembres();
+    } catch(e){
+        document.getElementById('membreError').textContent = e.message;
+        document.getElementById('membreError').style.display = 'block';
+    }
+}
+    loadCommunes();
+    loadMembres();
+    
+    // Événements des filtres
+    document.getElementById('filter-caisse').addEventListener('change', loadMembres);
+    document.getElementById('filter-commune').addEventListener('change', loadMembres);
+    document.getElementById('filter-status').addEventListener('change', loadMembres);
+});
+
+function loadCaisses() {
+    fetch('/gestion-caisses/api/caisses/', {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const select = document.getElementById('filter-caisse');
+        const caisses = data.results || data;
+        
+        caisses.forEach(caisse => {
+            const option = document.createElement('option');
+            option.value = caisse.id;
+            option.textContent = `${caisse.nom} (${caisse.code})`;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => console.error('Erreur lors du chargement des caisses:', error));
+}
+
+function loadCommunes() {
+    fetch('/gestion-caisses/api/communes/', {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const select = document.getElementById('filter-commune');
+        const communes = data.results || data;
+        
+        communes.forEach(commune => {
+            const option = document.createElement('option');
+            option.value = commune.id;
+            option.textContent = commune.nom;
+            select.appendChild(option);
+        });
+    })
+    .catch(error => console.error('Erreur lors du chargement des communes:', error));
+}
+
+function loadMembres() {
+    const caisseFilter = document.getElementById('filter-caisse').value;
+    const communeFilter = document.getElementById('filter-commune').value;
+    const statusFilter = document.getElementById('filter-status').value;
+    
+    let url = '/gestion-caisses/api/membres/';
+    const params = new URLSearchParams();
+    
+    if (caisseFilter) params.append('caisse', caisseFilter);
+    if (communeFilter) params.append('commune', communeFilter);
+    if (statusFilter) params.append('statut', statusFilter);
+    
+    if (params.toString()) {
+        url += '?' + params.toString();
+    }
+    
+    fetch(url, {
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        displayMembres(data.results || data);
+    })
+    .catch(error => {
+        console.error('Erreur lors du chargement des membres:', error);
+        document.getElementById('membres-content').innerHTML = 
+            '<div class="empty-state"><h3>Erreur de chargement</h3><p>Impossible de charger les membres.</p></div>';
+    });
+}
+
+function displayMembres(membres) {
+    const container = document.getElementById('membres-content');
+    
+    if (!membres || membres.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>Aucun membre trouvé</h3>
+                <p>Aucun membre ne correspond aux critères sélectionnés.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const membresHTML = membres.map(membre => `
+        <div class="membre-card">
+            <div class="membre-header">
+                <div class="membre-photo">${membre.photo ? `<img src="${membre.photo}" alt="photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>` : '👤'}</div>
+                <div class="membre-info">
+                    <h4>${membre.nom_complet}</h4>
+                    <div class="membre-caisse">${membre.caisse_nom || 'Aucune caisse'}</div>
+                </div>
+            </div>
+            <div class="membre-details">
+                <div class="detail-row">
+                    <span class="detail-label">Téléphone:</span>
+                    <span class="detail-value">${membre.numero_telephone || '-'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Date d'adhésion:</span>
+                    <span class="detail-value">${membre.date_adhesion ? new Date(membre.date_adhesion).toLocaleDateString('fr-FR') : '-'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Statut:</span>
+                    <span class="detail-value" style="color: ${membre.statut === 'ACTIF' ? '#10b981' : '#ef4444'}">
+                        ${membre.statut || 'Inconnu'}
+                    </span>
+                </div>
+            </div>
+            <div class="membre-actions">
+                <a href="/adminsecurelogin/gestion_caisses/membre/${membre.id}/change/" class="action-btn btn-view">Voir (admin)</a>
+                <button class="action-btn btn-edit" onclick="editMembre(${membre.id})">Modifier</button>
+                <button class="action-btn btn-delete" onclick="deleteMembre(${membre.id})">Supprimer</button>
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = `<div class="membres-grid">${membresHTML}</div>`;
+}
+
+function getCSRFToken() {
+    return window.csrfToken || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+}
+
+async function editMembre(id){
+  try{
+    ensureFormFields();
+    document.getElementById('membreLoading').style.display = 'block';
+    const res = await fetch(`/gestion-caisses/api/membres/${id}/`, { headers: { 'X-CSRFToken': getCSRFToken() }});
+    const data = await res.json();
+    const form = document.getElementById('membreForm');
+    document.getElementById('membre_id').value = data.id;
+    form.numero_carte_electeur.value = data.numero_carte_electeur;
+    form.numero_telephone.value = data.numero_telephone || '';
+    form.nom.value = data.nom;
+    form.prenoms.value = data.prenoms;
+    form.date_naissance.value = data.date_naissance;
+    form.adresse.value = data.adresse || '';
+    form.role.value = data.role || 'MEMBRE';
+    
+    const statutSelect = form.querySelector('select[name="statut"]');
+    if (statutSelect) statutSelect.value = data.statut || 'ACTIF';
+    
+    const sexeSelect = form.querySelector('select[name="sexe"]');
+    if (sexeSelect) sexeSelect.value = data.sexe || 'F';
+    
+    // Gérer l'affichage de la photo existante
+    if (data.photo){
+      const preview = document.getElementById('photoPreview');
+      const previewWrapper = document.getElementById('photoPreviewWrapper');
+      if (preview && previewWrapper){
+        preview.src = data.photo;
+        previewWrapper.style.display = 'block';
+      }
+    } else {
+      const previewWrapper = document.getElementById('photoPreviewWrapper');
+      if (previewWrapper) previewWrapper.style.display = 'none';
+    }
+    const modal = new bootstrap.Modal(document.getElementById('membreModal'));
+    document.querySelector('#membreModal .modal-title').textContent = 'Modifier le membre';
+    document.getElementById('membreLoading').style.display = 'none';
+    modal.show();
+  }catch(e){
+    document.getElementById('membreLoading').style.display = 'none';
+    alert('Impossible de charger le membre');
+  }
+}
+
+async function deleteMembre(id){
+  try{
+    const ok = confirm('Confirmer la suppression de ce membre ?');
+    if (!ok) return;
+    const res = await fetch(`/gestion-caisses/api/membres/${id}/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    if (res.status === 204){
+      loadMembres();
+      return;
+    }
+    const text = await res.text();
+    throw new Error(text || 'Suppression impossible');
+  }catch(e){
+    alert(e.message || 'Erreur lors de la suppression');
+  }
+}
+
+// Aperçu de l'image sélectionnée
+document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'photoInput' && e.target.files && e.target.files[0]){
+    const file = e.target.files[0];
+    
+    // Vérifier la taille du fichier (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Le fichier est trop volumineux. Taille maximum autorisée : 5MB');
+      e.target.value = '';
+      return;
+    }
+    
+    // Vérifier le type de fichier
+    if (!file.type.match('image.*')) {
+      alert('Veuillez sélectionner un fichier image valide (JPG, PNG, GIF)');
+      e.target.value = '';
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(evt){
+      const preview = document.getElementById('photoPreview');
+      const previewWrapper = document.getElementById('photoPreviewWrapper');
+      if (preview && previewWrapper){
+        preview.src = evt.target.result;
+        previewWrapper.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// Fonction pour s'assurer que tous les champs sont présents
+function ensureFormFields(){
+  const form = document.getElementById('membreForm');
+  if (!form) return;
+  
+  // Vérifier et ajouter le champ sexe si nécessaire
+  if (!form.querySelector('select[name="sexe"]')){
+    const sexeWrapper = document.createElement('div');
+    sexeWrapper.className = 'col-md-6';
+    sexeWrapper.innerHTML = `
+      <label class="form-label">Sexe</label>
+      <select class="form-select" name="sexe">
+        <option value="F" selected>Féminin</option>
+        <option value="M">Masculin</option>
+      </select>
+    `;
+    
+    // Insérer après la date de naissance
+    const dateNaissanceRow = form.querySelector('input[name="date_naissance"]').closest('.col-md-6');
+    if (dateNaissanceRow && dateNaissanceRow.nextSibling){
+      dateNaissanceRow.parentNode.insertBefore(sexeWrapper, dateNaissanceRow.nextSibling);
+    } else {
+      form.querySelector('.row.g-3').appendChild(sexeWrapper);
+    }
+  }
+  
+  // Vérifier et ajouter le champ photo si nécessaire
+  if (!form.querySelector('input[name="photo"]')){
+    const photoWrapper = document.createElement('div');
+    photoWrapper.className = 'col-md-6';
+    photoWrapper.innerHTML = `
+      <label class="form-label">Photo</label>
+      <input type="file" class="form-control" name="photo" id="photoInput" accept="image/*" />
+      <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 5MB)</small>
+    `;
+    form.querySelector('.row.g-3').appendChild(photoWrapper);
+  }
+  
+  // Vérifier et ajouter l'aperçu photo si nécessaire
+  if (!document.getElementById('photoPreviewWrapper')){
+    const previewWrapper = document.createElement('div');
+    previewWrapper.className = 'col-md-6';
+    previewWrapper.id = 'photoPreviewWrapper';
+    previewWrapper.style.display = 'none';
+    previewWrapper.innerHTML = `
+      <div style="text-align:center;">
+        <img id="photoPreview" alt="Aperçu de la photo" style="max-height:120px; max-width:100%; border-radius:8px; border: 1px solid #ddd;" />
+      </div>
+    `;
+    form.querySelector('.row.g-3').appendChild(previewWrapper);
+  }
+}
+</script>
+{% endblock %}

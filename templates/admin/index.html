@@ -1,0 +1,69 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content_title %}
+  <h1>🏠 Tableau de bord Admin</h1>
+{% endblock %}
+
+{% block content %}
+  <!-- Actions rapides -->
+  <div class="module" style="margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <a class="button" href="/adminsecurelogin/gestion_caisses/pret/" style="background:#6f42c1;color:#fff;border:none;">📄 Prêts</a>
+      <a class="button" href="/adminsecurelogin/gestion_caisses/caisse/" style="background:#2E86AB;color:#fff;border:none;">🏦 Caisses</a>
+      <a class="button" href="/adminsecurelogin/gestion_caisses/membre/" style="background:#388e3c;color:#fff;border:none;">👥 Membres</a>
+      <a class="button" href="/adminsecurelogin/gestion_caisses/notification/" style="background:#ff8f00;color:#fff;border:none;">🔔 Notifications</a>
+      <a class="button" href="/gestion-caisses/guide-application.pdf" style="background:#2e7d32;color:#fff;border:none;">📘 Guide PDF</a>
+    </div>
+  </div>
+
+  <!-- Applications -->
+  <div class="app-grid">
+    {% for app in app_list %}
+      <div class="app-card">
+        <div class="app-card__header">
+          <h2 style="margin:0; font-size:16px;">{{ app.name }}</h2>
+          <small class="text-muted">{{ app.app_label }}</small>
+        </div>
+        <ul class="model-list">
+          {% for model in app.models %}
+            <li class="model-item">
+              {% if model.admin_url %}<a href="{{ model.admin_url }}" class="model-link">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
+              <span class="model-actions">
+                {% if model.add_url %}<a class="mini-btn" href="{{ model.add_url }}">+ Ajouter</a>{% endif %}
+                {% if model.admin_url %}<a class="mini-btn" href="{{ model.admin_url }}">Voir</a>{% endif %}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .app-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
+    padding: 14px;
+  }
+  .app-card__header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+  .model-list { list-style: none; padding: 0; margin: 0; }
+  .model-item { display:flex; align-items:center; justify-content:space-between; padding: 8px 0; border-top: 1px dashed #eee; }
+  .model-item:first-child { border-top: 0; }
+  .model-link { font-weight: 600; }
+  .mini-btn { font-size: 12px; margin-left: 8px; color: #6f42c1; }
+  @media (max-width: 640px){ .app-grid{ grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+
