@@ -15,6 +15,7 @@ python-decouple==3.8
 Pillow==10.4.0  # Pour la gestion des images
 python-dateutil==2.8.2
 reportlab==4.4.3  # Pour la génération de PDF
+openpyxl==3.1.2  # Pour l'export Excel
 
 # Développement (optionnel)
 django-debug-toolbar==4.3.0

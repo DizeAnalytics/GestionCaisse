@@ -1,0 +1,254 @@
+{% load math_filters %}
+{% extends 'gestion_caisses/rapports/base_rapport.html' %}
+
+{% block title %}Rapport Général - Gestion des Caisses{% endblock %}
+
+{% block rapport_title %}Rapport Général du Système{% endblock %}
+{% block rapport_subtitle %}Vue d'ensemble complète de la gestion des caisses{% endblock %}
+{% block rapport_type %}Général{% endblock %}
+{% block rapport_periode %}Toutes périodes{% endblock %}
+
+{% block rapport_content %}
+    <!-- Section Statistiques Générales -->
+    <div class="section">
+        <h2 class="section-title">📊 Statistiques Générales du Système</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_caisses }}</div>
+                <div class="stat-label">Total Caisses</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_membres }}</div>
+                <div class="stat-label">Total Membres</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_prets }}</div>
+                <div class="stat-label">Total Prêts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_fonds|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Fonds Totaux</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section État des Prêts -->
+    <div class="section">
+        <h2 class="section-title">💳 État des Prêts</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ prets_valides }}</div>
+                <div class="stat-label">Prêts Validés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ prets_en_cours }}</div>
+                <div class="stat-label">Prêts en Cours</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ prets_rembourses }}</div>
+                <div class="stat-label">Prêts Remboursés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_montant_prets|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Montant Total Accordé</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_montant_rembourse|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Montant Total Remboursé</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_montant_prets|add:"-"|add:total_montant_rembourse|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Montant Restant</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Caisse Générale -->
+    <div class="section">
+        <h2 class="section-title">🏛️ État de la Caisse Générale</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ solde_reserve|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Solde de Réserve</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ solde_systeme|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Solde Système Total</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h3>Répartition des Fonds</h3>
+            <div class="chart-placeholder">
+                <p>📊 Graphique de répartition des fonds</p>
+                <p>Solde de Réserve: {{ solde_reserve|floatformat:0 }} FCFA</p>
+                <p>Solde Total des Caisses: {{ total_fonds|floatformat:0 }} FCFA</p>
+                <p>Solde Système: {{ solde_systeme|floatformat:0 }} FCFA</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Transferts -->
+    <div class="section">
+        <h2 class="section-title">🔄 État des Transferts entre Caisses</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_transferts }}</div>
+                <div class="stat-label">Total Transferts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ transferts_valides }}</div>
+                <div class="stat-label">Transferts Validés</div>
+            </div>
+        </div>
+        
+        {% if total_transferts > 0 %}
+        <div class="chart-container">
+            <h3>Répartition des Transferts</h3>
+            <div class="chart-placeholder">
+                <p>📈 Graphique des transferts par statut</p>
+                <p>Validés: {{ transferts_valides }} (<span id="pourcentage-transferts">0</span>%)</p>
+                <p>En attente: {{ total_transferts|add:"-"|add:transferts_valides }}</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="chart-container">
+            <p class="text-center text-muted">Aucun transfert enregistré pour le moment</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Résumé et Recommandations -->
+    <div class="section">
+        <h2 class="section-title">📋 Résumé et Recommandations</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">Points Clés du Système</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Fonds disponibles :</strong> {{ total_fonds|floatformat:0 }} FCFA répartis sur {{ total_caisses }} caisses</li>
+                <li><strong>Activité des prêts :</strong> {{ prets_en_cours }} prêts actuellement en cours</li>
+                <li><strong>Taux de remboursement :</strong> 
+                    {% if total_montant_prets > 0 %}
+                        {{ total_montant_rembourse|div:total_montant_prets|mul:100|floatformat:1 }}%
+                    {% else %}
+                        0%
+                    {% endif %}
+                    du montant total accordé
+                </li>
+                <li><strong>Solde de réserve :</strong> {{ solde_reserve|floatformat:0 }} FCFA dans la caisse générale</li>
+            </ul>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Recommandations</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                {% if prets_en_cours > 0 %}
+                <li>📊 <strong>Suivi des prêts :</strong> Surveiller les {{ prets_en_cours }} prêts en cours pour assurer un bon taux de remboursement</li>
+                {% endif %}
+                
+                {% if total_fonds > 0 %}
+                <li>💰 <strong>Gestion des fonds :</strong> Optimiser la répartition des {{ total_fonds|floatformat:0 }} FCFA disponibles</li>
+                {% endif %}
+                
+                {% if solde_reserve < 1000000 %}
+                <li>⚠️ <strong>Réserve :</strong> Considérer l'augmentation du solde de réserve (actuellement {{ solde_reserve|floatformat:0 }} FCFA)</li>
+                {% endif %}
+                
+                {% if total_transferts > 0 %}
+                <li>🔄 <strong>Transferts :</strong> Maintenir la traçabilité des {{ total_transferts }} transferts effectués</li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Section Détails Techniques -->
+    <div class="section">
+        <h2 class="section-title">🔧 Informations Techniques</h2>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Métrique</th>
+                        <th>Valeur</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Nombre total de caisses</td>
+                        <td class="text-center">{{ total_caisses }}</td>
+                        <td>Caisses enregistrées dans le système</td>
+                    </tr>
+                    <tr>
+                        <td>Nombre total de membres</td>
+                        <td class="text-center">{{ total_membres }}</td>
+                        <td>Membres actifs et inactifs</td>
+                    </tr>
+                    <tr>
+                        <td>Nombre total de prêts</td>
+                        <td class="text-center">{{ total_prets }}</td>
+                        <td>Tous les prêts depuis le début</td>
+                    </tr>
+                    <tr>
+                        <td>Prêts en cours</td>
+                        <td class="text-center">{{ prets_en_cours }}</td>
+                        <td>Prêts actuellement en cours de remboursement</td>
+                    </tr>
+                    <tr>
+                        <td>Prêts remboursés</td>
+                        <td class="text-center">{{ prets_rembourses }}</td>
+                        <td>Prêts entièrement remboursés</td>
+                    </tr>
+                    <tr>
+                        <td>Fonds totaux disponibles</td>
+                        <td class="text-center">{{ total_fonds|floatformat:0 }} FCFA</td>
+                        <td>Somme des fonds disponibles dans toutes les caisses</td>
+                    </tr>
+                    <tr>
+                        <td>Montant total des prêts</td>
+                        <td class="text-center">{{ total_montant_prets|floatformat:0 }} FCFA</td>
+                        <td>Capital total prêté</td>
+                    </tr>
+                    <tr>
+                        <td>Montant total remboursé</td>
+                        <td class="text-center">{{ total_montant_rembourse|floatformat:0 }} FCFA</td>
+                        <td>Capital total remboursé</td>
+                    </tr>
+                    <tr>
+                        <td>Solde de réserve</td>
+                        <td class="text-center">{{ solde_reserve|floatformat:0 }} FCFA</td>
+                        <td>Fonds de réserve de la caisse générale</td>
+                    </tr>
+                    <tr>
+                        <td>Solde système total</td>
+                        <td class="text-center">{{ solde_systeme|floatformat:0 }} FCFA</td>
+                        <td>Solde total du système (réserve + caisses)</td>
+                    </tr>
+                    <tr>
+                        <td>Nombre de transferts</td>
+                        <td class="text-center">{{ total_transferts }}</td>
+                        <td>Transferts entre caisses effectués</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Calculer le pourcentage des transferts validés
+        document.addEventListener('DOMContentLoaded', function() {
+            const transfertsValides = {{ transferts_valides }};
+            const totalTransferts = {{ total_transferts }};
+            
+            if (totalTransferts > 0) {
+                const pourcentage = (transfertsValides / totalTransferts * 100).toFixed(1);
+                document.getElementById('pourcentage-transferts').textContent = pourcentage;
+            }
+        });
+    </script>
+{% endblock %}

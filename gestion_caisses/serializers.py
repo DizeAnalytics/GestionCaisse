@@ -1,9 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
-    Region, Prefecture, Commune, Canton, Village,
+    Region, Prefecture, Commune, Canton, Village, Quartier,
     Caisse, Membre, Pret, Echeance, MouvementFond, 
-    VirementBancaire, AuditLog, Notification, CaisseGenerale, CaisseGeneraleMouvement, RapportActivite
+    VirementBancaire, AuditLog, Notification, CaisseGenerale, CaisseGeneraleMouvement, TransfertCaisse,
+    SeanceReunion, Cotisation, Depense, SalaireAgent, FichePaie, Agent,
+    ExerciceCaisse
 )
 
 
@@ -34,6 +36,15 @@ class UserSerializer(serializers.ModelSerializer):
             return membre.caisse.nom_association if membre.caisse else None
         except:
             return None
+
+
+class AgentListSerializer(serializers.ModelSerializer):
+    """Sérialiseur léger pour lister les agents"""
+    nom_complet = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Agent
+        fields = ['id', 'nom_complet', 'matricule', 'statut']
 
 
 class RegionSerializer(serializers.ModelSerializer):
@@ -83,11 +94,27 @@ class VillageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class QuartierSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les quartiers"""
+    village = VillageSerializer(read_only=True)
+    village_id = serializers.IntegerField(write_only=True)
+    canton_nom = serializers.CharField(source='village.canton.nom', read_only=True)
+    commune_nom = serializers.CharField(source='village.canton.commune.nom', read_only=True)
+    prefecture_nom = serializers.CharField(source='village.canton.commune.prefecture.nom', read_only=True)
+    region_nom = serializers.CharField(source='village.canton.commune.prefecture.region.nom', read_only=True)
+
+    class Meta:
+        model = Quartier
+        fields = '__all__'
+
+
 class MembreSerializer(serializers.ModelSerializer):
     """Sérialiseur pour les membres"""
     nom_complet = serializers.ReadOnlyField()
     caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
     caisse_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    quartier = QuartierSerializer(read_only=True)
+    quartier_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = Membre
@@ -125,9 +152,56 @@ class CaisseSerializer(serializers.ModelSerializer):
     secretaire = MembreSerializer(read_only=True)
     tresoriere = MembreSerializer(read_only=True)
     
+    # Noms des responsables pour faciliter l'affichage
+    presidente_nom = serializers.CharField(source='presidente.nom_complet', read_only=True)
+    secretaire_nom = serializers.CharField(source='secretaire.nom_complet', read_only=True)
+    tresoriere_nom = serializers.CharField(source='tresoriere.nom_complet', read_only=True)
+    presidente_telephone = serializers.CharField(source='presidente.numero_telephone', read_only=True)
+    secretaire_telephone = serializers.CharField(source='secretaire.numero_telephone', read_only=True)
+    tresoriere_telephone = serializers.CharField(source='tresoriere.numero_telephone', read_only=True)
+    
+    # Agent responsable
+    agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
+    
+    # Localisation
+    village_nom = serializers.CharField(source='village.nom', read_only=True)
+    canton_nom = serializers.CharField(source='canton.nom', read_only=True)
+    commune_nom = serializers.CharField(source='commune.nom', read_only=True)
+    prefecture_nom = serializers.CharField(source='prefecture.nom', read_only=True)
+    region_nom = serializers.CharField(source='region.nom', read_only=True)
+    
+    # Localisation complète pour l'affichage
+    localisation = serializers.SerializerMethodField()
+    
+    # Exercice en cours
+    exercice_actuel = serializers.SerializerMethodField()
+    
     presidente_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     secretaire_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     tresoriere_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
+    def get_localisation(self, obj):
+        """Construit la localisation complète"""
+        parts = []
+        if obj.village:
+            parts.append(obj.village.nom)
+        if obj.canton:
+            parts.append(obj.canton.nom)
+        if obj.commune:
+            parts.append(obj.commune.nom)
+        return ', '.join(parts) if parts else 'Non définie'
+    
+    def get_exercice_actuel(self, obj):
+        """Récupère l'exercice en cours"""
+        exercice = obj.exercices.filter(statut='EN_COURS').first()
+        if exercice:
+            return {
+                'id': exercice.id,
+                'date_debut': exercice.date_debut,
+                'date_fin': exercice.date_fin,
+                'statut': exercice.statut
+            }
+        return None
     
     class Meta:
         model = Caisse
@@ -139,6 +213,15 @@ class CaisseSerializer(serializers.ModelSerializer):
             'montant_total_prets': {'read_only': True},
             'montant_total_remboursements': {'read_only': True},
         }
+
+
+class ExerciceCaisseSerializer(serializers.ModelSerializer):
+    caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+
+    class Meta:
+        model = ExerciceCaisse
+        fields = '__all__'
+        read_only_fields = ['date_creation', 'date_modification']
 
 
 class EcheanceSerializer(serializers.ModelSerializer):
@@ -182,6 +265,42 @@ class PretSerializer(serializers.ModelSerializer):
             'nombre_echeances': {'read_only': True},
             'nombre_echeances_payees': {'read_only': True},
         }
+    
+    def validate(self, data):
+        """Validation personnalisée pour les prêts"""
+        # Vérifier si c'est une création (nouveau prêt)
+        if self.instance is None:
+            membre_id = data.get('membre_id')
+            caisse_id = data.get('caisse_id')
+            if membre_id:
+                # Vérifier si le membre a déjà un prêt en cours
+                from .models import Pret, Membre
+                prets_ouverts = Pret.objects.filter(
+                    membre_id=membre_id,
+                    statut__in=['EN_ATTENTE', 'EN_ATTENTE_ADMIN', 'VALIDE', 'EN_COURS', 'EN_RETARD', 'BLOQUE']
+                )
+                if prets_ouverts.exists():
+                    pret_existant = prets_ouverts.first()
+                    raise serializers.ValidationError({
+                        'membre': f"Le membre sélectionné a déjà un prêt en cours (statut: {pret_existant.get_statut_display()}). "
+                                  "Il doit clôturer ce prêt avant d'en créer un nouveau. "
+                                  "Les prêts remboursés permettent de faire un nouveau prêt."
+                    })
+                # Règle d'éligibilité: le membre doit avoir cotisé au moins 3000 FCFA
+                try:
+                    membre = Membre.objects.get(id=membre_id)
+                    total_cot = getattr(membre, 'total_cotisations', None)
+                    total_cot = total_cot() if callable(total_cot) else 0
+                    if total_cot < 3000:
+                        raise serializers.ValidationError({
+                            'membre': "Éligibilité refusée: le membre doit avoir cotisé au moins 3000 FCFA avant de demander un prêt."
+                        })
+                    if caisse_id and membre.caisse_id != caisse_id:
+                        raise serializers.ValidationError({'caisse': "Le membre doit appartenir à la caisse sélectionnée."})
+                except Membre.DoesNotExist:
+                    raise serializers.ValidationError({'membre': 'Membre introuvable.'})
+        
+        return data
 
 
 class MouvementFondSerializer(serializers.ModelSerializer):
@@ -230,12 +349,154 @@ class CaisseGeneraleMouvementSerializer(serializers.ModelSerializer):
     class Meta:
         model = CaisseGeneraleMouvement
         fields = '__all__'
+    
+    def validate(self, data):
+        """Validation personnalisée pour les mouvements de caisse générale"""
+        from .models import CaisseGenerale
+        
+        # Vérifier que le montant est positif
+        if data.get('montant', 0) <= 0:
+            raise serializers.ValidationError("Le montant doit être strictement positif.")
+        
+        # Pour les alimentations de caisses, vérifier que la caisse générale a suffisamment de fonds
+        if data.get('type_mouvement') == 'ALIMENTATION_CAISSE':
+            if not data.get('caisse_destination'):
+                raise serializers.ValidationError("Une caisse de destination est requise pour l'alimentation d'une caisse.")
+            
+            # Vérifier que la caisse générale a suffisamment de fonds
+            caisse_generale = CaisseGenerale.get_instance()
+            montant_demande = data.get('montant', 0)
+            
+            if caisse_generale.solde_reserve < montant_demande:
+                raise serializers.ValidationError({
+                    'montant': f"Fonds insuffisants. La caisse générale dispose de {caisse_generale.solde_reserve} FCFA, "
+                              f"mais {montant_demande} FCFA sont demandés. "
+                              f"Solde disponible: {caisse_generale.solde_reserve} FCFA"
+                })
+        
+        # Pour les sorties, vérifier également que la caisse générale a suffisamment de fonds
+        elif data.get('type_mouvement') == 'SORTIE':
+            caisse_generale = CaisseGenerale.get_instance()
+            montant_demande = data.get('montant', 0)
+            
+            if caisse_generale.solde_reserve < montant_demande:
+                raise serializers.ValidationError({
+                    'montant': f"Fonds insuffisants. La caisse générale dispose de {caisse_generale.solde_reserve} FCFA, "
+                              f"mais {montant_demande} FCFA sont demandés. "
+                              f"Solde disponible: {caisse_generale.solde_reserve} FCFA"
+                })
+        
+        return data
 
 
-class RapportActiviteSerializer(serializers.ModelSerializer):
+class TransfertCaisseSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les transferts entre caisses"""
+    caisse_source = CaisseSerializer(read_only=True)
+    caisse_destination = CaisseSerializer(read_only=True)
+    utilisateur = UserSerializer(read_only=True)
+    mouvement_source = MouvementFondSerializer(read_only=True)
+    mouvement_destination = MouvementFondSerializer(read_only=True)
+    
+    # IDs pour la création/modification
+    # La source est requise pour 'CAISSE_VERS_CAISSE' et 'CAISSE_VERS_GENERALE' mais pas pour 'GENERALE_VERS_CAISSE'
+    caisse_source_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    caisse_destination_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
     class Meta:
-        model = RapportActivite
+        model = TransfertCaisse
         fields = '__all__'
+        extra_kwargs = {
+            'date_transfert': {'read_only': True},
+            'statut': {'read_only': True},
+            'mouvement_source': {'read_only': True},
+            'mouvement_destination': {'read_only': True},
+            'utilisateur': {'read_only': True},
+        }
+    
+    def validate(self, data):
+        """Validation personnalisée pour les transferts"""
+        from .models import Caisse, CaisseGenerale
+        
+        # Vérifier que le montant est positif
+        if data.get('montant', 0) <= 0:
+            raise serializers.ValidationError("Le montant doit être strictement positif.")
+        
+        type_transfert = data.get('type_transfert')
+        caisse_source_id = data.get('caisse_source_id')
+        caisse_destination_id = data.get('caisse_destination_id')
+        
+        # Validation selon le type de transfert
+        if type_transfert == 'CAISSE_VERS_CAISSE':
+            if not caisse_source_id:
+                raise serializers.ValidationError("Une caisse source est requise pour un transfert entre caisses.")
+            if not caisse_destination_id:
+                raise serializers.ValidationError("Une caisse de destination est requise pour un transfert entre caisses.")
+            
+            if caisse_source_id == caisse_destination_id:
+                raise serializers.ValidationError("Une caisse ne peut pas se transférer de l'argent à elle-même.")
+            
+            # Vérifier que la caisse source a suffisamment de fonds
+            try:
+                caisse_source = Caisse.objects.get(id=caisse_source_id)
+                montant_demande = data.get('montant', 0)
+                
+                if caisse_source.fond_disponible < montant_demande:
+                    raise serializers.ValidationError({
+                        'montant': f"Fonds insuffisants. La caisse {caisse_source.nom_association} dispose de {caisse_source.fond_disponible} FCFA, "
+                                  f"mais {montant_demande} FCFA sont demandés pour le transfert."
+                    })
+            except Caisse.DoesNotExist:
+                raise serializers.ValidationError("Caisse source introuvable.")
+        
+        elif type_transfert == 'CAISSE_VERS_GENERALE':
+            if not caisse_source_id:
+                raise serializers.ValidationError("Une caisse source est requise pour un transfert vers la caisse générale.")
+            # Vérifier que la caisse source a suffisamment de fonds
+            try:
+                caisse_source = Caisse.objects.get(id=caisse_source_id)
+                montant_demande = data.get('montant', 0)
+                
+                if caisse_source.fond_disponible < montant_demande:
+                    raise serializers.ValidationError({
+                        'montant': f"Fonds insuffisants. La caisse {caisse_source.nom_association} dispose de {caisse_source.fond_disponible} FCFA, "
+                                  f"mais {montant_demande} FCFA sont demandés pour le transfert vers la caisse générale."
+                    })
+            except Caisse.DoesNotExist:
+                raise serializers.ValidationError("Caisse source introuvable.")
+        
+        elif type_transfert == 'GENERALE_VERS_CAISSE':
+            if not caisse_destination_id:
+                raise serializers.ValidationError("Une caisse de destination est requise pour un transfert de la caisse générale.")
+            
+            # Vérifier que la caisse générale a suffisamment de fonds
+            caisse_generale = CaisseGenerale.get_instance()
+            montant_demande = data.get('montant', 0)
+            
+            if caisse_generale.solde_reserve < montant_demande:
+                raise serializers.ValidationError({
+                    'montant': f"Fonds insuffisants. La caisse générale dispose de {caisse_generale.solde_reserve} FCFA, "
+                              f"mais {montant_demande} FCFA sont demandés pour le transfert."
+                })
+        
+        return data
+    
+    def create(self, validated_data):
+        """Créer le transfert et l'exécuter automatiquement"""
+        # Assigner l'utilisateur actuel
+        validated_data['utilisateur'] = self.context['request'].user
+        
+        # Créer le transfert
+        transfert = TransfertCaisse.objects.create(**validated_data)
+        
+        # Exécuter le transfert
+        try:
+            transfert.executer_transfert()
+        except Exception as e:
+            # En cas d'erreur, supprimer le transfert et lever l'exception
+            transfert.delete()
+            raise serializers.ValidationError(f"Erreur lors de l'exécution du transfert: {str(e)}")
+        
+        return transfert
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
@@ -245,6 +506,56 @@ class AuditLogSerializer(serializers.ModelSerializer):
         model = AuditLog
         fields = '__all__'
         read_only_fields = ['date_action']
+
+
+class SeanceReunionSerializer(serializers.ModelSerializer):
+    caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+
+    class Meta:
+        model = SeanceReunion
+        fields = '__all__'
+
+
+class CotisationSerializer(serializers.ModelSerializer):
+    membre_nom = serializers.CharField(source='membre.nom_complet', read_only=True)
+    caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+    seance_date = serializers.DateField(source='seance.date_seance', read_only=True)
+
+    membre_id = serializers.IntegerField(write_only=True)
+    caisse_id = serializers.IntegerField(write_only=True)
+    seance_id = serializers.IntegerField(write_only=True)
+
+    class Meta:
+        model = Cotisation
+        fields = '__all__'
+        extra_kwargs = {
+            'date_cotisation': {'read_only': True},
+            'montant_total': {'read_only': True},
+            'utilisateur': {'read_only': True},
+            # Utiliser les champs *_id en écriture, ne pas exiger les relations directes
+            'membre': {'required': False, 'allow_null': True},
+            'caisse': {'required': False, 'allow_null': True},
+            'seance': {'required': False, 'allow_null': True},
+        }
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            validated_data['utilisateur'] = request.user
+        return super().create(validated_data)
+
+    def validate(self, attrs):
+        """Empêcher qu'un membre cotise deux fois pour la même séance."""
+        from .models import Cotisation
+        membre_id = attrs.get('membre_id') or getattr(self.instance, 'membre_id', None)
+        seance_id = attrs.get('seance_id') or getattr(self.instance, 'seance_id', None)
+        if membre_id and seance_id:
+            qs = Cotisation.objects.filter(membre_id=membre_id, seance_id=seance_id)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({'membre': "Ce membre a déjà cotisé pour cette séance."})
+        return attrs
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -280,15 +591,60 @@ class CaisseListSerializer(serializers.ModelSerializer):
     region_nom = serializers.CharField(source='region.nom', read_only=True)
     prefecture_nom = serializers.CharField(source='prefecture.nom', read_only=True)
     commune_nom = serializers.CharField(source='commune.nom', read_only=True)
+    village_nom = serializers.CharField(source='village.nom', read_only=True)
+    canton_nom = serializers.CharField(source='canton.nom', read_only=True)
     nombre_membres = serializers.ReadOnlyField()
     solde_disponible = serializers.ReadOnlyField()
+    
+    # Agent responsable
+    agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
+    
+    # Noms des responsables pour faciliter l'affichage
+    presidente_nom = serializers.CharField(source='presidente.nom_complet', read_only=True)
+    secretaire_nom = serializers.CharField(source='secretaire.nom_complet', read_only=True)
+    tresoriere_nom = serializers.CharField(source='tresoriere.nom_complet', read_only=True)
+    presidente_telephone = serializers.CharField(source='presidente.numero_telephone', read_only=True)
+    secretaire_telephone = serializers.CharField(source='secretaire.numero_telephone', read_only=True)
+    tresoriere_telephone = serializers.CharField(source='tresoriere.numero_telephone', read_only=True)
+    
+    # Localisation complète pour l'affichage
+    localisation = serializers.SerializerMethodField()
+    
+    # Exercice en cours
+    exercice_actuel = serializers.SerializerMethodField()
+    
+    def get_localisation(self, obj):
+        """Construit la localisation complète"""
+        parts = []
+        if obj.village:
+            parts.append(obj.village.nom)
+        if obj.canton:
+            parts.append(obj.canton.nom)
+        if obj.commune:
+            parts.append(obj.commune.nom)
+        return ', '.join(parts) if parts else 'Non définie'
+    
+    def get_exercice_actuel(self, obj):
+        """Récupère l'exercice en cours"""
+        exercice = obj.exercices.filter(statut='EN_COURS').first()
+        if exercice:
+            return {
+                'id': exercice.id,
+                'date_debut': exercice.date_debut,
+                'date_fin': exercice.date_fin,
+                'statut': exercice.statut
+            }
+        return None
     
     class Meta:
         model = Caisse
         fields = [
             'id', 'code', 'nom_association', 'region_nom', 'prefecture_nom', 
-            'commune_nom', 'statut', 'nombre_membres', 'fond_disponible', 
-            'solde_disponible', 'date_creation'
+            'commune_nom', 'village_nom', 'canton_nom', 'statut', 'nombre_membres', 
+            'fond_disponible', 'solde_disponible', 'date_creation', 'agent_nom',
+            'presidente_nom', 'secretaire_nom', 'tresoriere_nom',
+            'presidente_telephone', 'secretaire_telephone', 'tresoriere_telephone',
+            'localisation', 'exercice_actuel'
         ]
 
 
@@ -311,6 +667,7 @@ class PretListSerializer(serializers.ModelSerializer):
     """Sérialiseur simplifié pour la liste des prêts"""
     membre_nom = serializers.CharField(source='membre.nom_complet', read_only=True)
     caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+    caisse_code = serializers.CharField(source='caisse.code', read_only=True)
     montant_restant = serializers.ReadOnlyField()
     total_a_rembourser = serializers.ReadOnlyField()
     taux_interet = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
@@ -318,7 +675,7 @@ class PretListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pret
         fields = [
-            'id', 'numero_pret', 'membre_nom', 'caisse_nom', 'montant_demande',
+            'id', 'numero_pret', 'membre_nom', 'caisse_nom', 'caisse_code', 'montant_demande',
             'montant_accord', 'statut', 'date_demande', 'montant_restant',
             'total_a_rembourser', 'taux_interet'
         ]
@@ -353,3 +710,153 @@ class DashboardStatsSerializer(serializers.Serializer):
     taux_remboursement = serializers.FloatField()
     notifications_non_lues = serializers.IntegerField()
     demandes_pret_en_attente = serializers.IntegerField()
+
+
+class DepenseSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les dépenses (modèle simplifié)"""
+    caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+
+    class Meta:
+        model = Depense
+        fields = '__all__'
+        read_only_fields = ['date_creation', 'date_modification', 'utilisateur']
+
+
+class DepenseListSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour la liste des dépenses (modèle simplifié)"""
+    caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+
+    class Meta:
+        model = Depense
+        fields = [
+            'id', 'caisse_nom', 'Objectifdepense', 'montantdepense', 'datedepense', 'observation', 'date_creation'
+        ]
+
+
+class SalaireAgentSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les salaires des agents"""
+    agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
+    agent_matricule = serializers.CharField(source='agent.matricule', read_only=True)
+    periode = serializers.ReadOnlyField()
+    nombre_nouvelles_caisses = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = SalaireAgent
+        fields = [
+            'id', 'agent', 'agent_nom', 'agent_matricule', 'mois', 'annee',
+            'salaire_base', 'bonus_caisses', 'prime_performance', 'total_brut',
+            'deductions', 'total_net', 'statut', 'date_paiement', 'mode_paiement',
+            'notes', 'periode', 'nombre_nouvelles_caisses', 'date_creation',
+            'date_modification'
+        ]
+        read_only_fields = ['total_brut', 'total_net', 'date_creation', 'date_modification']
+    
+    def validate(self, data):
+        """Validation personnalisée pour les salaires"""
+        # Vérifier que le mois est entre 1 et 12
+        mois = data.get('mois')
+        if mois and (mois < 1 or mois > 12):
+            raise serializers.ValidationError("Le mois doit être entre 1 et 12")
+        
+        # Vérifier que l'année est raisonnable
+        annee = data.get('annee')
+        if annee and (annee < 2000 or annee > 2100):
+            raise serializers.ValidationError("L'année doit être entre 2000 et 2100")
+        
+        # Vérifier qu'il n'y a pas de doublon agent/mois/année
+        agent = data.get('agent')
+        mois = data.get('mois')
+        annee = data.get('annee')
+        
+        if agent and mois and annee:
+            existing = SalaireAgent.objects.filter(
+                agent=agent, mois=mois, annee=annee
+            ).exclude(pk=self.instance.pk if self.instance else None)
+            
+            if existing.exists():
+                raise serializers.ValidationError(
+                    f"Un salaire existe déjà pour l'agent {agent.nom_complet} "
+                    f"pour la période {mois}/{annee}"
+                )
+        
+        return data
+
+
+class SalaireAgentListSerializer(serializers.ModelSerializer):
+    """Sérialiseur simplifié pour la liste des salaires des agents"""
+    agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
+    agent_matricule = serializers.CharField(source='agent.matricule', read_only=True)
+    periode = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = SalaireAgent
+        fields = [
+            'id', 'agent_nom', 'agent_matricule', 'mois', 'annee', 'periode',
+            'salaire_base', 'bonus_caisses', 'prime_performance', 'total_brut',
+            'total_net', 'statut', 'date_paiement', 'date_creation'
+        ]
+
+
+class FichePaieSerializer(serializers.ModelSerializer):
+    """Sérialiseur pour les fiches de paie des agents"""
+    agent_nom = serializers.CharField(source='salaire.agent.nom_complet', read_only=True)
+    agent_matricule = serializers.CharField(source='salaire.agent.matricule', read_only=True)
+    periode = serializers.ReadOnlyField()
+    fichier_pdf_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FichePaie
+        fields = [
+            'id', 'salaire', 'type_fiche', 'agent_nom', 'agent_matricule',
+            'nom_agent', 'matricule', 'poste', 'salaire_base', 'bonus_caisses',
+            'prime_performance', 'total_brut', 'deductions', 'total_net',
+            'mois', 'annee', 'periode', 'nombre_nouvelles_caisses',
+            'fichier_pdf', 'fichier_pdf_url', 'date_generation', 'genere_par',
+            'date_creation'
+        ]
+        read_only_fields = [
+            'nom_agent', 'matricule', 'poste', 'salaire_base', 'bonus_caisses',
+            'prime_performance', 'total_brut', 'deductions', 'total_net',
+            'mois', 'annee', 'nombre_nouvelles_caisses', 'date_creation'
+        ]
+    
+    def get_fichier_pdf_url(self, obj):
+        """Retourne l'URL du fichier PDF s'il existe"""
+        if obj.fichier_pdf:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.fichier_pdf.url)
+        return None
+
+
+class FichePaieListSerializer(serializers.ModelSerializer):
+    """Sérialiseur simplifié pour la liste des fiches de paie"""
+    agent_nom = serializers.CharField(source='salaire.agent.nom_complet', read_only=True)
+    agent_matricule = serializers.CharField(source='salaire.agent.matricule', read_only=True)
+    periode = serializers.ReadOnlyField()
+    fichier_pdf_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FichePaie
+        fields = [
+            'id', 'agent_nom', 'agent_matricule', 'type_fiche', 'periode',
+            'salaire_base', 'bonus_caisses', 'prime_performance', 'total_brut',
+            'total_net', 'nombre_nouvelles_caisses', 'fichier_pdf_url',
+            'date_generation', 'date_creation'
+        ]
+    
+    def get_fichier_pdf_url(self, obj):
+        """Retourne l'URL du fichier PDF s'il existe"""
+        if obj.fichier_pdf:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.fichier_pdf.url)
+        return None
+
+
+class AgentSalairesStatsSerializer(serializers.Serializer):
+    """Sérialiseur pour les statistiques des salaires des agents"""
+    annee_courante = serializers.IntegerField()
+    total_agents = serializers.IntegerField()
+    stats_mensuelles = serializers.ListField()
+    top_agents_bonus = serializers.ListField()

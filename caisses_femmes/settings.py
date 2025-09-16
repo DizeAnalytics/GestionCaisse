@@ -89,12 +89,8 @@ WSGI_APPLICATION = 'caisses_femmes.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='caisses_femmes'),
-        'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -293,6 +289,7 @@ JAZZMIN_SETTINGS = {
 	"custom_js": None,
 	"topmenu_links": [
 		{"name": "Frontend Admin", "url": "/gestion-caisses/admin-frontend/", "permissions": ["auth.view_user"]},
+		{"name": "Tableau de bord", "url": "/gestion-caisses/dashboard/", "permissions": ["auth.view_user"]},
 	],
 }
 

@@ -6,39 +6,315 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from rest_framework import viewsets, status, filters
 from rest_framework.exceptions import ValidationError
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Sum, Q, F, Prefetch
 from django.utils import timezone
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
+from types import SimpleNamespace
 import json
 from django.contrib.auth.models import User
 from .models import (
-    Region, Prefecture, Commune, Canton, Village,
+    Region, Prefecture, Commune, Canton, Village, Quartier,
     Caisse, Membre, Pret, Echeance, MouvementFond, 
-    VirementBancaire, AuditLog, Notification, Agent, CaisseGenerale, CaisseGeneraleMouvement, RapportActivite
+    VirementBancaire, AuditLog, Notification, Agent, CaisseGenerale, CaisseGeneraleMouvement,
+    TransfertCaisse, SeanceReunion, Cotisation, Depense, RapportActivite,
+    SalaireAgent, FichePaie, ExerciceCaisse
 )
 from .serializers import (
-    RegionSerializer, PrefectureSerializer, CommuneSerializer, CantonSerializer, VillageSerializer,
+    RegionSerializer, PrefectureSerializer, CommuneSerializer, CantonSerializer, VillageSerializer, QuartierSerializer,
     CaisseSerializer, CaisseListSerializer, CaisseStatsSerializer,
     MembreSerializer, MembreListSerializer,
     PretSerializer, PretListSerializer,
     EcheanceSerializer, MouvementFondSerializer, VirementBancaireSerializer,
     AuditLogSerializer, NotificationSerializer, NotificationListSerializer, DashboardStatsSerializer,
-    UserSerializer, CaisseGeneraleSerializer, CaisseGeneraleMouvementSerializer, RapportActiviteSerializer
+    UserSerializer, CaisseGeneraleSerializer, CaisseGeneraleMouvementSerializer,
+    TransfertCaisseSerializer, SeanceReunionSerializer, CotisationSerializer,
+    DepenseSerializer, DepenseListSerializer, ExerciceCaisseSerializer,
+    SalaireAgentSerializer, FichePaieSerializer, AgentListSerializer
 )
 from .services import PretService, NotificationService
-from .utils import generate_pret_octroi_pdf, generate_remboursement_pdf, generate_remboursement_complet_pdf, generate_membres_liste_pdf, generate_membre_individual_pdf, get_parametres_application, generate_application_guide_pdf
+from .utils import generate_pret_octroi_pdf, generate_remboursement_pdf, generate_remboursement_complet_pdf, generate_membres_liste_pdf, generate_membre_individual_pdf, get_parametres_application, generate_application_guide_pdf, generate_rapport_pdf, export_rapport_excel, export_rapport_csv
 from datetime import date
 from .permissions import AgentPermissions
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.contrib.admin.views.decorators import staff_member_required
+from django.shortcuts import get_object_or_404
+from django.core.files.base import ContentFile
+from django.utils import timezone
+import json
+from datetime import datetime, timedelta
+# ============================================================================
+# Bloc utilitaire: synthèse "Caisse Générale" pour les rapports
+# ============================================================================
+
+def _build_caisse_generale_block(date_debut=None, date_fin=None):
+    """Construit le bloc de synthèse pour la Caisse Générale.
+
+    Contenu:
+    - soldes: réserve, total caisses, système
+    - mouvements de la caisse générale (agrégés par type) sur la période
+    - derniers mouvements (limités) pour contexte
+    """
+    from django.db.models import Sum, Count, Q
+    from .models import CaisseGenerale, CaisseGeneraleMouvement
+
+    cg = CaisseGenerale.get_instance()
+
+    from django.utils import timezone
+    # Construire des bornes timezone-aware pour les DateTimeField
+    start_dt = None
+    end_dt = None
+    if date_debut:
+        start_dt = timezone.make_aware(datetime.combine(date_debut, time.min), timezone.get_current_timezone())
+    if date_fin:
+        end_dt = timezone.make_aware(datetime.combine(date_fin, time.max), timezone.get_current_timezone())
+
+    filtres_date = Q()
+    if start_dt:
+        filtres_date &= Q(date_mouvement__gte=start_dt)
+    if end_dt:
+        filtres_date &= Q(date_mouvement__lte=end_dt)
+
+    mv_qs = CaisseGeneraleMouvement.objects.filter(filtres_date).order_by('-date_mouvement')
+    mv_stats = list(
+        mv_qs.values('type_mouvement').annotate(total=Sum('montant'), nombre=Count('id'))
+    )
+
+    derniers = [
+        {
+            'date': m.date_mouvement.strftime('%d/%m/%Y'),
+            'type': m.type_mouvement,
+            'montant': float(m.montant),
+            'description': m.description,
+            'caisse_destination': m.caisse_destination.nom_association if m.caisse_destination else None,
+        }
+        for m in mv_qs[:10]
+    ]
+
+    return {
+        'soldes': {
+            'solde_reserve': float(cg.solde_reserve or 0),
+            'solde_total_caisses': float(cg.solde_total_caisses or 0),
+            'solde_systeme': float(cg.solde_systeme or 0),
+        },
+        'mouvements': {
+            'par_type': mv_stats,
+            'derniers': derniers,
+        }
+    }
+
+import os
+from django.contrib.auth.decorators import user_passes_test
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncMonth
 
 
 def get_user_caisse(user):
     """Retourne la caisse liée au profil de l'utilisateur (None si non liée)."""
     profil = getattr(user, 'profil_membre', None)
     return getattr(profil, 'caisse', None) if profil else None
+
+
+# API: Séances de réunion
+class SeanceReunionViewSet(viewsets.ModelViewSet):
+    queryset = SeanceReunion.objects.select_related('caisse').all()
+    serializer_class = SeanceReunionSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['caisse', 'date_seance']
+    search_fields = ['titre', 'caisse__nom_association']
+    ordering_fields = ['date_seance', 'date_creation']
+    ordering = ['-date_seance']
+
+
+# API: Cotisations
+class CotisationViewSet(viewsets.ModelViewSet):
+    queryset = Cotisation.objects.select_related('caisse', 'membre', 'seance').all()
+    serializer_class = CotisationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['caisse', 'membre', 'seance']
+    search_fields = ['membre__nom', 'membre__prenoms', 'caisse__nom_association']
+    ordering_fields = ['date_cotisation', 'montant_total']
+    ordering = ['-date_cotisation']
+
+    def perform_create(self, serializer):
+        # Vérifier exercice actif côté API non-admin
+        caisse_id = self.request.data.get('caisse') or self.request.data.get('caisse_id')
+        if caisse_id:
+            try:
+                caisse = Caisse.objects.get(pk=caisse_id)
+                assert_exercice_ouvert(caisse)
+            except Exception as e:
+                raise ValidationError({'caisse': str(e)})
+
+        instance = serializer.save(utilisateur=self.request.user)
+        # Vérifier le solde disponible avant validation finale
+        try:
+            caisse = instance.caisse
+            solde = caisse.solde_disponible_depenses
+            if (solde is not None) and (instance.montantdepense is not None) and (instance.montantdepense > solde):
+                # Annuler création
+                instance.delete()
+                raise ValidationError({'montantdepense': "Solde disponible insuffisant pour enregistrer cette dépense"})
+        except Exception:
+            pass
+
+
+# API: Statistiques des cotisations
+class CotisationStatsViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='caisse')
+    def caisse_stats(self, request):
+        """Totaux des cotisations pour une caisse, avec options de période et groupement mensuel.
+
+        Params:
+        - caisse_id (obligatoire)
+        - debut (YYYY-MM-DD, optionnel)
+        - fin (YYYY-MM-DD, optionnel)
+        - group_by=month (optionnel)
+        """
+        caisse_id = request.query_params.get('caisse_id')
+        if not caisse_id:
+            raise ValidationError({'caisse_id': 'Paramètre requis'})
+
+        qs = Cotisation.objects.filter(caisse_id=caisse_id)
+
+        # Filtre période
+        debut = request.query_params.get('debut')
+        fin = request.query_params.get('fin')
+        if debut:
+            try:
+                debut_dt = datetime.strptime(debut, '%Y-%m-%d')
+                qs = qs.filter(date_cotisation__date__gte=debut_dt.date())
+            except Exception:
+                raise ValidationError({'debut': 'Format attendu YYYY-MM-DD'})
+        if fin:
+            try:
+                fin_dt = datetime.strptime(fin, '%Y-%m-%d')
+                qs = qs.filter(date_cotisation__date__lte=fin_dt.date())
+            except Exception:
+                raise ValidationError({'fin': 'Format attendu YYYY-MM-DD'})
+
+        # Groupement
+        if request.query_params.get('group_by') == 'month':
+            data = list(
+                qs.annotate(mois=TruncMonth('date_cotisation'))
+                  .values('mois')
+                  .annotate(
+                      total=Sum('montant_total'),
+                      prix_tempon=Sum('prix_tempon'),
+                      frais_solidarite=Sum('frais_solidarite'),
+                      frais_fondation=Sum('frais_fondation'),
+                      penalite_emprunt_retard=Sum('penalite_emprunt_retard'),
+                      nombre=Count('id')
+                  )
+                  .order_by('mois')
+            )
+            # Sérialiser mois en str
+            for item in data:
+                item['mois'] = item['mois'].strftime('%Y-%m') if item['mois'] else None
+            return Response({'caisse_id': int(caisse_id), 'group_by': 'month', 'series': data})
+
+        # Totaux simples
+        agg = qs.aggregate(
+            total=Sum('montant_total') or 0,
+            prix_tempon=Sum('prix_tempon') or 0,
+            frais_solidarite=Sum('frais_solidarite') or 0,
+            frais_fondation=Sum('frais_fondation') or 0,
+            penalite_emprunt_retard=Sum('penalite_emprunt_retard') or 0,
+            nombre=Count('id')
+        )
+        return Response({'caisse_id': int(caisse_id), 'totaux': agg})
+
+    @action(detail=False, methods=['get'], url_path='seance')
+    def seance_stats(self, request):
+        """Totaux des cotisations pour une séance donnée.
+
+        Params: seance_id (obligatoire)
+        """
+        seance_id = request.query_params.get('seance_id')
+        if not seance_id:
+            raise ValidationError({'seance_id': 'Paramètre requis'})
+        qs = Cotisation.objects.filter(seance_id=seance_id)
+        agg = qs.aggregate(
+            total=Sum('montant_total') or 0,
+            prix_tempon=Sum('prix_tempon') or 0,
+            frais_solidarite=Sum('frais_solidarite') or 0,
+            frais_fondation=Sum('frais_fondation') or 0,
+            penalite_emprunt_retard=Sum('penalite_emprunt_retard') or 0,
+            nombre=Count('id')
+        )
+        return Response({'seance_id': int(seance_id), 'totaux': agg})
+
+    @action(detail=False, methods=['get'], url_path='membre')
+    def membre_stats(self, request):
+        """Totaux et séries de cotisations pour un membre.
+
+        Params:
+        - membre_id (obligatoire)
+        - debut (YYYY-MM-DD, optionnel)
+        - fin (YYYY-MM-DD, optionnel)
+        """
+        membre_id = request.query_params.get('membre_id')
+        if not membre_id:
+            raise ValidationError({'membre_id': 'Paramètre requis'})
+
+        qs = Cotisation.objects.filter(membre_id=membre_id)
+
+        # Filtre période
+        debut = request.query_params.get('debut')
+        fin = request.query_params.get('fin')
+        if debut:
+            try:
+                debut_dt = datetime.strptime(debut, '%Y-%m-%d')
+                qs = qs.filter(date_cotisation__date__gte=debut_dt.date())
+            except Exception:
+                raise ValidationError({'debut': 'Format attendu YYYY-MM-DD'})
+        if fin:
+            try:
+                fin_dt = datetime.strptime(fin, '%Y-%m-%d')
+                qs = qs.filter(date_cotisation__date__lte=fin_dt.date())
+            except Exception:
+                raise ValidationError({'fin': 'Format attendu YYYY-MM-DD'})
+
+        # Nombre de mois distincts cotisés
+        mois_count = qs.annotate(mois=TruncMonth('date_cotisation')).values('mois').distinct().count()
+
+        if request.query_params.get('group_by') == 'month':
+            data = list(
+                qs.annotate(mois=TruncMonth('date_cotisation'))
+                  .values('mois')
+                  .annotate(
+                      total=Sum('montant_total'),
+                      prix_tempon=Sum('prix_tempon'),
+                      frais_solidarite=Sum('frais_solidarite'),
+                      frais_fondation=Sum('frais_fondation'),
+                      penalite_emprunt_retard=Sum('penalite_emprunt_retard'),
+                      nombre=Count('id')
+                  )
+                  .order_by('mois')
+            )
+            for item in data:
+                item['mois'] = item['mois'].strftime('%Y-%m') if item['mois'] else None
+            return Response({'membre_id': int(membre_id), 'group_by': 'month', 'nombre_mois_cotises': mois_count, 'series': data})
+
+        agg = qs.aggregate(
+            total=Sum('montant_total') or 0,
+            prix_tempon=Sum('prix_tempon') or 0,
+            frais_solidarite=Sum('frais_solidarite') or 0,
+            frais_fondation=Sum('frais_fondation') or 0,
+            penalite_emprunt_retard=Sum('penalite_emprunt_retard') or 0,
+            nombre=Count('id')
+        )
+        return Response({'membre_id': int(membre_id), 'nombre_mois_cotises': mois_count, 'totaux': agg})
 
 # Contexte utilisateur pour le frontend
 @login_required
@@ -309,6 +585,15 @@ class CommuneViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['nom']
 
 
+class AgentViewSet(viewsets.ReadOnlyModelViewSet):
+    """Liste en lecture seule des agents pour les formulaires"""
+    queryset = Agent.objects.all().order_by('nom', 'prenoms')
+    serializer_class = AgentListSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['nom', 'prenoms', 'matricule']
+
+
 class CantonViewSet(viewsets.ReadOnlyModelViewSet):
     """Vue pour la gestion des cantons (lecture seule)"""
     queryset = Canton.objects.select_related('commune', 'commune__prefecture').all()
@@ -333,11 +618,26 @@ class VillageViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['nom']
 
 
+class QuartierViewSet(viewsets.ReadOnlyModelViewSet):
+    """Vue pour la gestion des quartiers (lecture seule)"""
+    queryset = Quartier.objects.select_related('village', 'village__canton', 'village__canton__commune').all()
+    serializer_class = QuartierSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['village', 'village__canton']
+    search_fields = ['nom', 'code']
+    ordering_fields = ['nom', 'code']
+    ordering = ['nom']
+
 class CaisseViewSet(viewsets.ModelViewSet):
     """Vue pour la gestion des caisses"""
     queryset = Caisse.objects.select_related(
-        'region', 'prefecture', 'commune', 'canton', 'village'
-    ).prefetch_related('membres').all()
+        'region', 'prefecture', 'commune', 'canton', 'village',
+        'agent', 'presidente', 'secretaire', 'tresoriere'
+    ).prefetch_related(
+        'membres',
+        Prefetch('exercices', queryset=ExerciceCaisse.objects.filter(statut='EN_COURS').order_by('-date_debut'))
+    ).all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['statut', 'region', 'prefecture', 'commune']
@@ -408,6 +708,80 @@ class CaisseViewSet(viewsets.ModelViewSet):
             'total_caisses_actives': total_caisses_actives,
             'total_fond_disponible': total_fond_disponible,
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def ouvrir_exercice(self, request, pk=None):
+        """Admin: ouvrir un exercice (10 mois) pour une caisse donnée.
+
+        Input JSON: { "date_debut": "YYYY-MM-DD", "notes": "..." }
+        """
+        caisse = self.get_object()
+        date_debut_str = request.data.get('date_debut')
+        notes = request.data.get('notes', '')
+
+        if not date_debut_str:
+            raise ValidationError({'date_debut': 'Champ requis (YYYY-MM-DD).'})
+
+        try:
+            from datetime import datetime
+            date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+        except Exception:
+            raise ValidationError({'date_debut': 'Format invalide. Utilisez YYYY-MM-DD.'})
+
+        # Empêcher deux exercices en cours
+        if ExerciceCaisse.objects.filter(caisse=caisse, statut='EN_COURS').exists():
+            raise ValidationError({'detail': 'Un exercice est déjà en cours pour cette caisse.'})
+
+        exercice = ExerciceCaisse.objects.create(
+            caisse=caisse,
+            date_debut=date_debut,
+            notes=notes,
+        )
+
+        AuditLog.objects.create(
+            utilisateur=request.user,
+            action='CREATION',
+            modele='ExerciceCaisse',
+            objet_id=exercice.id,
+            details={'caisse': caisse.nom_association, 'date_debut': str(exercice.date_debut), 'date_fin': str(exercice.date_fin)},
+            ip_adresse=request.META.get('REMOTE_ADDR')
+        )
+
+        return Response(ExerciceCaisseSerializer(exercice).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def cloturer_exercice(self, request, pk=None):
+        """Admin: clôturer l'exercice en cours pour une caisse.
+
+        Optionnel: { "date_fin": "YYYY-MM-DD" } sinon garde la date calculée.
+        """
+        caisse = self.get_object()
+        exercice = ExerciceCaisse.objects.filter(caisse=caisse, statut='EN_COURS').order_by('-date_debut').first()
+        if not exercice:
+            raise ValidationError({'detail': "Aucun exercice en cours pour cette caisse."})
+
+        date_fin_str = request.data.get('date_fin')
+        if date_fin_str:
+            try:
+                from datetime import datetime
+                date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+                exercice.date_fin = date_fin
+            except Exception:
+                raise ValidationError({'date_fin': 'Format invalide. Utilisez YYYY-MM-DD.'})
+
+        exercice.statut = 'CLOTURE'
+        exercice.save()
+
+        AuditLog.objects.create(
+            utilisateur=request.user,
+            action='MODIFICATION',
+            modele='ExerciceCaisse',
+            objet_id=exercice.id,
+            details={'caisse': caisse.nom_association, 'statut': 'CLOTURE', 'date_fin': str(exercice.date_fin)},
+            ip_adresse=request.META.get('REMOTE_ADDR')
+        )
+
+        return Response(ExerciceCaisseSerializer(exercice).data)
     
     @action(detail=True, methods=['get'])
     def membres_liste_pdf(self, request, pk=None):
@@ -515,6 +889,22 @@ class MembreViewSet(viewsets.ModelViewSet):
             ip_adresse=self.request.META.get('REMOTE_ADDR')
         )
     
+    @action(detail=True, methods=['get'], url_path='cotisations-total')
+    def cotisations_total(self, request, pk=None):
+        """Retourne le total des cotisations (montant cumulé) pour un membre donné."""
+        try:
+            membre = self.get_object()
+            total = membre.total_cotisations() if hasattr(membre, 'total_cotisations') else 0
+            return Response({
+                'membre_id': membre.id,
+                'total_cotisations': float(total)
+            })
+        except Exception:
+            return Response({
+                'membre_id': int(pk) if pk else None,
+                'total_cotisations': 0
+            })
+    
     @action(detail=False, methods=['get'])
     def par_caisse(self, request):
         """Obtenir les membres groupés par caisse"""
@@ -563,52 +953,45 @@ class PretViewSet(viewsets.ModelViewSet):
         return qs
     
     def perform_create(self, serializer):
-        # Vérifier que le membre n'a pas déjà un prêt en cours
-        membre = serializer.validated_data.get('membre')
-        if membre:
-            # Vérifier s'il y a des prêts actifs (EN_COURS, EN_RETARD, BLOQUE)
-            prets_actifs = Pret.objects.filter(
-                membre=membre,
-                statut__in=['EN_COURS', 'EN_RETARD', 'BLOQUE']
-            ).exists()
-            
-            if prets_actifs:
-                raise ValidationError({
-                    'detail': f'Le membre {membre.nom_complet} a déjà un prêt en cours. Il doit d\'abord terminer le remboursement de son prêt actuel.'
-                })
-
-        # Forcer la caisse du user pour les non-admins
-        if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
-            pret = serializer.save(caisse=caisse)
-        else:
+        try:
+            # Valider le modèle avant la sauvegarde
             pret = serializer.save()
-
-        # Ne pas calculer automatiquement le montant_accord ici
-        # L'admin le définira lors de la validation
-        
-        # Si l'utilisateur n'est pas admin, soumettre pour validation
-        if not self.request.user.is_superuser:
-            pret.statut = 'EN_ATTENTE_ADMIN'
-            pret.save()
+            pret.full_clean()
             
-            # Notifier la demande de prêt
-            PretService.soumettre_demande_pret(pret, self.request.user)
-        
-        # Log de création
-        AuditLog.objects.create(
-            utilisateur=self.request.user,
-            action='CREATION',
-            modele='Pret',
-            objet_id=pret.id,
-            details={
-                'membre': pret.membre.nom_complet,
-                'montant_demande': str(pret.montant_demande),
-                'caisse': pret.caisse.nom_association,
-                'statut': pret.statut
-            },
-            ip_adresse=self.request.META.get('REMOTE_ADDR')
-        )
+            # Forcer la caisse du user pour les non-admins
+            if not self.request.user.is_superuser:
+                caisse = get_user_caisse(self.request.user)
+                pret.caisse = caisse
+                pret.save()
+            
+            # Ne pas calculer automatiquement le montant_accord ici
+            # L'admin le définira lors de la validation
+            
+            # Si l'utilisateur n'est pas admin, soumettre pour validation
+            if not self.request.user.is_superuser:
+                pret.statut = 'EN_ATTENTE_ADMIN'
+                pret.save()
+                
+                # Notifier la demande de prêt
+                PretService.soumettre_demande_pret(pret, self.request.user)
+            
+            # Log de création
+            AuditLog.objects.create(
+                utilisateur=self.request.user,
+                action='CREATION',
+                modele='Pret',
+                objet_id=pret.id,
+                details={
+                    'membre': pret.membre.nom_complet,
+                    'montant_demande': str(pret.montant_demande),
+                    'caisse': pret.caisse.nom_association,
+                    'statut': pret.statut
+                },
+                ip_adresse=self.request.META.get('REMOTE_ADDR')
+            )
+        except ValidationError as e:
+            # Re-raise les erreurs de validation avec le bon format
+            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
 
     def perform_update(self, serializer):
         pret_instance = serializer.instance
@@ -627,6 +1010,47 @@ class PretViewSet(viewsets.ModelViewSet):
             ip_adresse=self.request.META.get('REMOTE_ADDR')
         )
     
+    @action(detail=False, methods=['get'])
+    def check_member_loan(self, request):
+        """Vérifier si un membre a un prêt en cours"""
+        membre_id = request.query_params.get('membre_id')
+        if not membre_id:
+            return Response(
+                {'error': 'Le paramètre membre_id est requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from .models import Pret
+            prets_actifs = Pret.objects.filter(
+                membre_id=membre_id,
+                statut__in=['EN_ATTENTE', 'EN_ATTENTE_ADMIN', 'VALIDE', 'EN_COURS', 'EN_RETARD', 'BLOQUE']
+            )
+            
+            has_active_loan = prets_actifs.exists()
+            active_loan_info = None
+            
+            if has_active_loan:
+                pret = prets_actifs.first()
+                active_loan_info = {
+                    'numero_pret': pret.numero_pret,
+                    'statut': pret.statut,
+                    'statut_display': pret.get_statut_display(),
+                    'montant_demande': str(pret.montant_demande),
+                    'date_demande': pret.date_demande.isoformat() if pret.date_demande else None
+                }
+            
+            return Response({
+                'has_active_loan': has_active_loan,
+                'active_loan_info': active_loan_info
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la vérification: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
         """Valider un prêt (action réservée aux administrateurs)"""
@@ -852,7 +1276,7 @@ class PretViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Générer le PDF de remboursement complet
+        # Générer le PDF
         pdf = generate_remboursement_complet_pdf(pret, mouvements_remboursement)
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f"attachment; filename=remboursement-complet_{pret.numero_pret}.pdf"
@@ -916,48 +1340,7 @@ class MouvementFondViewSet(viewsets.ModelViewSet):
     ordering = ['-date_mouvement']
 
 
-class RapportActiviteViewSet(viewsets.ModelViewSet):
-    queryset = RapportActivite.objects.select_related('caisse', 'genere_par').all()
-    serializer_class = RapportActiviteSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['type_rapport', 'statut', 'caisse']
-    search_fields = ['notes']
-    ordering_fields = ['date_generation']
-    ordering = ['-date_generation']
-    
-    def perform_create(self, serializer):
-        mouvement = serializer.save(utilisateur=self.request.user)
-        
-        # Mettre à jour le solde de la caisse
-        caisse = mouvement.caisse
-        mouvement.solde_avant = caisse.fond_disponible
-        
-        if mouvement.type_mouvement == 'ALIMENTATION':
-            caisse.fond_disponible += mouvement.montant
-        elif mouvement.type_mouvement == 'DECAISSEMENT':
-            caisse.fond_disponible -= mouvement.montant
-        elif mouvement.type_mouvement == 'REMBOURSEMENT':
-            caisse.fond_disponible += mouvement.montant
-            caisse.montant_total_remboursements += mouvement.montant
-        
-        caisse.save()
-        mouvement.solde_apres = caisse.fond_disponible
-        mouvement.save()
-        
-        # Log de création
-        AuditLog.objects.create(
-            utilisateur=self.request.user,
-            action='CREATION',
-            modele='MouvementFond',
-            objet_id=mouvement.id,
-            details={
-                'type': mouvement.type_mouvement,
-                'montant': str(mouvement.montant),
-                'caisse': mouvement.caisse.nom_association
-            },
-            ip_adresse=self.request.META.get('REMOTE_ADDR')
-        )
+
 
 
 class VirementBancaireViewSet(viewsets.ModelViewSet):
@@ -1533,6 +1916,12 @@ def rapports_global_api(request):
     else:
         return JsonResponse({'error': 'Type de rapport invalide'}, status=400)
 
+    # Ajouter le bloc "Caisse Générale"
+    try:
+        data['caisse_generale'] = _build_caisse_generale_block(date_debut_parsed, date_fin_parsed)
+    except Exception:
+        data['caisse_generale'] = {'error': 'indisponible'}
+
     return JsonResponse(data)
 
 
@@ -1575,6 +1964,11 @@ def admin_report_pdf(request):
             donnees = generer_rapport_echeances_global(date_debut_parsed, date_fin_parsed)
         else:
             return HttpResponse('Type de rapport invalide', status=400)
+        # Bloc Caisse Générale
+        try:
+            donnees['caisse_generale'] = _build_caisse_generale_block(date_debut_parsed, date_fin_parsed)
+        except Exception:
+            donnees['caisse_generale'] = {'error': 'indisponible'}
     else:
         # Rapports par caisse
         if type_rapport == 'general':
@@ -1589,12 +1983,20 @@ def admin_report_pdf(request):
             donnees = generer_rapport_echeances_caisse(caisse, date_debut_parsed, date_fin_parsed)
         else:
             return HttpResponse('Type de rapport invalide', status=400)
+        # Ajouter aussi le contexte Caisse Générale
+        try:
+            donnees['caisse_generale'] = _build_caisse_generale_block(date_debut_parsed, date_fin_parsed)
+        except Exception:
+            donnees['caisse_generale'] = {'error': 'indisponible'}
 
-    # Créer un objet RapportActivite "virtuel" pour le moteur PDF
-    rapport = RapportActivite()
-    rapport.type_rapport = type_rapport
-    rapport.caisse = caisse
-    rapport.donnees = donnees
+    # Créer un objet simple "virtuel" pour le moteur PDF
+    rapport = SimpleNamespace(
+        type_rapport=type_rapport,
+        caisse=caisse,
+        donnees=donnees,
+        date_debut=date_debut_parsed,
+        date_fin=date_fin_parsed,
+    )
 
     try:
         from .utils import generate_rapport_pdf
@@ -1666,7 +2068,7 @@ def agent_caisses_list(request):
     for caisse in caisses:
         caisse.nombre_membres_actifs = caisse.membres.filter(statut='ACTIF').count()
         caisse.nombre_prets_actifs = caisse.prets.filter(statut='EN_COURS').count()
-        caisse.solde_disponible = caisse.fond_disponible - caisse.montant_total_prets
+        caisse.solde_disponible = (caisse.fond_initial or 0) + (caisse.fond_disponible or 0)
     
     context = {
         'caisses': caisses,
@@ -1705,7 +2107,7 @@ def agent_caisse_detail(request, caisse_id):
             'prets_rembourses': prets.filter(statut='REMBOURSE').count(),
             'fond_disponible': caisse.fond_disponible,
             'montant_total_prets': caisse.montant_total_prets,
-            'solde_disponible': caisse.fond_disponible - caisse.montant_total_prets,
+            'solde_disponible': (caisse.fond_initial or 0) + (caisse.fond_disponible or 0),
         }
         
         context = {
@@ -1749,30 +2151,74 @@ def agent_stats_api(request):
 # ============================================================================
 
 @login_required
+def caisses_cards_view(request):
+    """Vue pour afficher toutes les caisses dans des cartes avec détails"""
+    from django.db.models import Prefetch
+    
+    # Récupérer toutes les caisses avec leurs responsables et localisation
+    caisses = Caisse.objects.select_related(
+        'agent', 'village', 'canton', 'commune', 'prefecture', 'region',
+        'presidente', 'secretaire', 'tresoriere'
+    ).order_by('-date_creation')
+    
+    # Préparer les données pour chaque caisse
+    caisses_data = []
+    for caisse in caisses:
+        # Récupérer l'exercice en cours (source unique de vérité: module Exercice de caisse)
+        exercice_actuel = (
+            ExerciceCaisse.objects
+            .filter(caisse=caisse, statut='EN_COURS')
+            .order_by('-date_debut')
+            .first()
+        )
+        
+        # Récupérer les 3 premiers responsables
+        responsables = []
+        if caisse.presidente:
+            responsables.append({
+                'nom': caisse.presidente.nom_complet,
+                'role': 'Présidente',
+                'telephone': caisse.presidente.numero_telephone
+            })
+        if caisse.secretaire:
+            responsables.append({
+                'nom': caisse.secretaire.nom_complet,
+                'role': 'Secrétaire',
+                'telephone': caisse.secretaire.numero_telephone
+            })
+        if caisse.tresoriere:
+            responsables.append({
+                'nom': caisse.tresoriere.nom_complet,
+                'role': 'Trésorière',
+                'telephone': caisse.tresoriere.numero_telephone
+            })
+        
+        caisses_data.append({
+            'caisse': caisse,
+            'exercice_actuel': exercice_actuel,
+            'responsables': responsables[:3],  # Limiter à 3
+            'localisation': f"{caisse.village.nom}, {caisse.canton.nom}, {caisse.commune.nom}",
+            'agent_responsable': caisse.agent.nom_complet if caisse.agent else 'Non assigné'
+        })
+    
+    context = {
+        'caisses_data': caisses_data,
+        'total_caisses': len(caisses_data)
+    }
+    
+    return render(request, 'gestion_caisses/caisses_cards.html', context)
+
+@login_required
 def rapports_caisse_api(request):
     """API pour les rapports de caisse"""
     try:
-        # Caisse ciblée (paramètre optionnel)
-        caisse_id = request.GET.get('caisse_id')
-        user_caisse = get_user_caisse(request.user)
+        # Si admin: rapports GLOBAUX (toutes caisses). Si non admin: rapport limité à sa caisse.
         caisse = None
-
-        if request.user.is_superuser:
-            # L'admin peut cibler n'importe quelle caisse ou défaut = première disponible
-            if caisse_id:
-                try:
-                    caisse = Caisse.objects.get(pk=caisse_id)
-                except Caisse.DoesNotExist:
-                    return JsonResponse({'error': "Caisse introuvable"}, status=404)
-            else:
-                caisse = Caisse.objects.first()
-                if not caisse:
-                    return JsonResponse({'error': "Aucune caisse disponible"}, status=400)
-        else:
-            # Utilisateur non admin: doit être lié à une caisse
+        if not request.user.is_superuser:
+            caisse_id = request.GET.get('caisse_id')
+            user_caisse = get_user_caisse(request.user)
             if not user_caisse:
                 return JsonResponse({'error': 'Aucune caisse associée'}, status=400)
-            # Si une caisse_id est fournie, vérifier l'autorisation
             if caisse_id and str(user_caisse.id) != str(caisse_id):
                 return JsonResponse({'error': "Accès non autorisé à cette caisse"}, status=403)
             caisse = user_caisse
@@ -1788,20 +2234,239 @@ def rapports_caisse_api(request):
         if date_fin:
             date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
         
-        # Générer le rapport selon le type
+        # Générer le rapport selon le type (admin => global ; non-admin => par caisse)
+        is_admin = request.user.is_superuser
         if type_rapport == 'general':
-            rapport = generer_rapport_general_caisse(caisse, date_debut, date_fin)
+            rapport = generer_rapport_general_global(date_debut, date_fin) if is_admin else generer_rapport_general_caisse(caisse, date_debut, date_fin)
         elif type_rapport == 'financier':
-            rapport = generer_rapport_financier_caisse(caisse, date_debut, date_fin)
+            rapport = generer_rapport_financier_global(date_debut, date_fin) if is_admin else generer_rapport_financier_caisse(caisse, date_debut, date_fin)
         elif type_rapport == 'prets':
-            rapport = generer_rapport_prets_caisse(caisse, date_debut, date_fin)
+            rapport = generer_rapport_prets_global(date_debut, date_fin) if is_admin else generer_rapport_prets_caisse(caisse, date_debut, date_fin)
         elif type_rapport == 'membres':
-            rapport = generer_rapport_membres_caisse(caisse, date_debut, date_fin)
+            rapport = generer_rapport_membres_global(date_debut, date_fin) if is_admin else generer_rapport_membres_caisse(caisse, date_debut, date_fin)
         elif type_rapport == 'echeances':
-            rapport = generer_rapport_echeances_caisse(caisse, date_debut, date_fin)
+            rapport = generer_rapport_echeances_global(date_debut, date_fin) if is_admin else generer_rapport_echeances_caisse(caisse, date_debut, date_fin)
+        elif type_rapport == 'cotisations_general':
+            # Rapport des cotisations (liste)
+            cotisations = Cotisation.objects.filter(caisse=caisse)
+            if date_debut:
+                cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
+            if date_fin:
+                cotisations = cotisations.filter(date_cotisation__date__lte=date_fin)
+            items = [
+                {
+                    'date_cotisation': c.date_cotisation.strftime('%d/%m/%Y %H:%M'),
+                    'membre': c.membre.nom_complet,
+                    'seance': c.seance.date_seance.strftime('%d/%m/%Y'),
+                    'prix_tempon': float(c.prix_tempon or 0),
+                    'frais_solidarite': float(c.frais_solidarite or 0),
+                    'frais_fondation': float(c.frais_fondation or 0),
+                    'penalite_emprunt_retard': float(c.penalite_emprunt_retard or 0),
+                    'montant_total': float(c.montant_total or 0),
+                    'observation': c.description or '',
+                }
+                for c in cotisations.order_by('-date_cotisation')
+            ]
+            rapport = {
+                'type': 'cotisations_general',
+                'caisse': {'code': caisse.code, 'nom': caisse.nom_association},
+                'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
+                'items': items,
+                'totaux': {
+                    'tempon': sum(i['prix_tempon'] for i in items),
+                    'solidarite': sum(i['frais_solidarite'] for i in items),
+                    'fondation': sum(i['frais_fondation'] for i in items),
+                    'penalite': sum(i['penalite_emprunt_retard'] for i in items),
+                    'total': sum(i['montant_total'] for i in items),
+                    'nombre': len(items),
+                }
+            }
+        elif type_rapport == 'cotisations_par_membre':
+            from collections import defaultdict
+            cotisations = Cotisation.objects.filter(caisse=caisse)
+            if date_debut:
+                cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
+            if date_fin:
+                cotisations = cotisations.filter(date_cotisation__date__lte=date_fin)
+            agg = defaultdict(lambda: {'nom': '', 'tempon':0.0, 'solidarite':0.0, 'fondation':0.0, 'penalite':0.0, 'total':0.0, 'nombre':0})
+            for c in cotisations.select_related('membre'):
+                a = agg[c.membre_id]
+                a['nom'] = c.membre.nom_complet
+                a['tempon'] += float(c.prix_tempon or 0)
+                a['solidarite'] += float(c.frais_solidarite or 0)
+                a['fondation'] += float(c.frais_fondation or 0)
+                a['penalite'] += float(c.penalite_emprunt_retard or 0)
+                a['total'] += float(c.montant_total or 0)
+                a['nombre'] += 1
+            items = [{'membre': v['nom'], **{k:v[k] for k in ['tempon','solidarite','fondation','penalite','total','nombre']}} for v in agg.values()]
+            rapport = {
+                'type': 'cotisations_par_membre',
+                'caisse': {'code': caisse.code, 'nom': caisse.nom_association},
+                'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
+                'items': items,
+                'totaux': {
+                    'tempon': sum(i['tempon'] for i in items),
+                    'solidarite': sum(i['solidarite'] for i in items),
+                    'fondation': sum(i['fondation'] for i in items),
+                    'penalite': sum(i['penalite'] for i in items),
+                    'total': sum(i['total'] for i in items),
+                    'nombre': sum(i['nombre'] for i in items),
+                }
+            }
+        elif type_rapport == 'depenses':
+            depenses = Depense.objects.filter(caisse=caisse)
+            if date_debut:
+                depenses = depenses.filter(datedepense__gte=date_debut)
+            if date_fin:
+                depenses = depenses.filter(datedepense__lte=date_fin)
+            items = [
+                {
+                    'date': d.datedepense.strftime('%d/%m/%Y') if d.datedepense else '',
+                    'objectif': d.Objectifdepense or '',
+                    'montant': float(d.montantdepense or 0),
+                    'observation': d.observation or ''
+                }
+                for d in depenses.order_by('-datedepense', '-date_creation')
+            ]
+            rapport = {
+                'type': 'depenses',
+                'caisse': caisse,  # Passer l'objet caisse complet pour le PDF
+                'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
+                'items': items,
+                'totaux': {
+                    'montant': sum(i['montant'] for i in items),
+                    'nombre': len(items)
+                }
+            }
+        elif type_rapport == 'cotisations_membre':
+            # Rapport des cotisations d'un seul membre (demandé)
+            membre_id = request.GET.get('membre') or request.GET.get('membre_id')
+            if not membre_id:
+                return JsonResponse({'error': 'Paramètre membre (ou membre_id) requis'}, status=400)
+            try:
+                membre = Membre.objects.get(pk=membre_id, caisse=caisse)
+            except Membre.DoesNotExist:
+                return JsonResponse({'error': 'Membre introuvable dans cette caisse'}, status=404)
+            cotisations = Cotisation.objects.filter(caisse=caisse, membre=membre)
+            if date_debut:
+                cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
+            if date_fin:
+                cotisations = cotisations.filter(date_cotisation__date__lte=date_fin)
+            items = [
+                {
+                    'seance': c.seance.date_seance.strftime('%d/%m/%Y'),
+                    'prix_tempon': float(c.prix_tempon or 0),
+                    'frais_solidarite': float(c.frais_solidarite or 0),
+                    'penalite_emprunt_retard': float(c.penalite_emprunt_retard or 0),
+                    'montant_total': float(c.montant_total or 0),
+                    'observation': c.description or '',
+                }
+                for c in cotisations.order_by('-date_cotisation')
+            ]
+            rapport = {
+                'type': 'cotisations_membre',
+                'caisse': {'code': caisse.code, 'nom': caisse.nom_association},
+                'membre': {'id': membre.id, 'nom': membre.nom_complet},
+                'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
+                'items': items,
+                'totaux': {
+                    'tempon': sum(i['prix_tempon'] for i in items),
+                    'solidarite': sum(i['frais_solidarite'] for i in items),
+                    'penalite': sum(i['penalite_emprunt_retard'] for i in items),
+                    'total': sum(i['montant_total'] for i in items),
+                    'nombre': len(items),
+                }
+            }
+        elif type_rapport in ['membres_systeme_pdf', 'agents_systeme_pdf', 'prets_evaluation_pdf', 'prets_par_motif']:
+            # Ces types renvoient directement un PDF global
+            from .utils import generate_membres_systeme_pdf, generate_agents_systeme_pdf, generate_prets_evaluation_pdf, generate_prets_par_motif_pdf
+            if type_rapport == 'membres_systeme_pdf':
+                pdf_bytes = generate_membres_systeme_pdf()
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                response['Content-Disposition'] = f"attachment; filename=membres_systeme_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+                return response
+            elif type_rapport == 'agents_systeme_pdf':
+                pdf_bytes = generate_agents_systeme_pdf()
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                response['Content-Disposition'] = f"attachment; filename=agents_systeme_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+                return response
+            elif type_rapport == 'prets_evaluation_pdf':
+                # Période & caisse optionnels (réutiliser les dates déjà parsées plus haut)
+                caisse_id = request.GET.get('caisse_id')
+                pdf_bytes = generate_prets_evaluation_pdf(date_debut, date_fin, caisse_id)
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                response['Content-Disposition'] = f"attachment; filename=prets_evaluation_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+                return response
+            else:
+                # Préts par motif (ADMIN global uniquement)
+                if not request.user.is_superuser:
+                    return JsonResponse({'error': 'Réservé aux administrateurs'}, status=403)
+                motif = request.GET.get('motif')
+                output_format = request.GET.get('format')
+                # JSON ou PDF
+                if output_format == 'pdf':
+                    pdf_bytes = generate_prets_par_motif_pdf(motif, date_debut, date_fin)
+                    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                    response['Content-Disposition'] = f"attachment; filename=prets_par_motif_{motif or 'tous'}_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+                    return response
+                else:
+                    # JSON de synthèse
+                    from django.db.models import Q
+                    qs = Pret.objects.select_related('membre','caisse')
+                    if motif:
+                        qs = qs.filter(Q(motif__iexact=motif) | Q(motif__icontains=motif))
+                    if date_debut:
+                        qs = qs.filter(date_demande__date__gte=date_debut)
+                    if date_fin:
+                        qs = qs.filter(date_demande__date__lte=date_fin)
+                    items = []
+                    for p in qs:
+                        # calcul % remboursé
+                        total = getattr(p, 'total_a_rembourser', 0) or 0
+                        restant = getattr(p, 'montant_restant', 0) or 0
+                        pct = 0
+                        if total > 0:
+                            pct = round((total - max(0, restant)) / total * 100)
+                            if pct < 0: pct = 0
+                            if pct > 100: pct = 100
+                        items.append({
+                            'numero_pret': p.numero_pret,
+                            'membre': getattr(p.membre, 'nom_complet', ''),
+                            'caisse': getattr(p.caisse, 'nom_association', ''),
+                            'pourcentage': pct,
+                        })
+                    return JsonResponse({
+                        'motif': motif or 'Tous',
+                        'nombre': len(items),
+                        'items': items,
+                        'totaux': {},
+                    })
         else:
             return JsonResponse({'error': 'Type de rapport invalide'}, status=400)
         
+        # Si on demande un PDF, retourner un binaire PDF
+        output_format = request.GET.get('format')
+        if output_format == 'pdf':
+            from types import SimpleNamespace
+            from .utils import generate_rapport_pdf
+            rapobj = SimpleNamespace(
+                type_rapport=type_rapport,
+                caisse=None if is_admin else caisse,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                donnees=rapport,
+            )
+            pdf_bytes = generate_rapport_pdf(rapobj)
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            label = 'toutes_caisses' if is_admin else (caisse.code if caisse else 'caisse')
+            response['Content-Disposition'] = f"attachment; filename=rapport_{type_rapport}_{label}_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+            return response
+
+        # Sinon JSON enrichi
+        try:
+            rapport['caisse_generale'] = _build_caisse_generale_block(date_debut, date_fin)
+        except Exception:
+            rapport['caisse_generale'] = {'error': 'indisponible'}
         return JsonResponse(rapport)
         
     except Exception as e:
@@ -1919,13 +2584,25 @@ def generer_rapport_general_global(date_debut=None, date_fin=None):
         'hommes': membres.filter(sexe='M').count(),
     }
 
+    # Montants robustes basés sur les prêts accordés (en cours + remboursés)
+    prets_accordes = prets.filter(statut__in=['EN_COURS', 'REMBOURSE', 'EN_RETARD'])
+    total_prets_accordes = prets_accordes.aggregate(total=Sum('montant_accord'))['total'] or 0
+    total_rembourse = prets.aggregate(total=Sum('montant_rembourse'))['total'] or 0
+    # Reste à rembourser (sur prêts non soldés)
+    from django.db.models import F, ExpressionWrapper, DecimalField
+    restant_qs = prets.filter(statut__in=['EN_COURS', 'EN_RETARD']).annotate(
+        restant=ExpressionWrapper((F('montant_accord') - F('montant_rembourse')), output_field=DecimalField(max_digits=15, decimal_places=2))
+    )
+    total_restant = restant_qs.aggregate(total=Sum('restant'))['total'] or 0
+
     prets_stats = {
         'total': prets.count(),
         'en_cours': prets.filter(statut='EN_COURS').count(),
         'rembourses': prets.filter(statut='REMBOURSE').count(),
         'en_retard': prets.filter(statut='EN_RETARD').count(),
-        'montant_total': float(prets.aggregate(total=Sum('montant_accord'))['total'] or 0),
-        'montant_rembourse': float(prets.aggregate(total=Sum('montant_rembourse'))['total'] or 0),
+        'montant_total': float(total_prets_accordes),
+        'montant_rembourse': float(total_rembourse),
+        'montant_restant': float(total_restant),
         'montant_moyen': float(prets.aggregate(moy=Avg('montant_accord'))['moy'] or 0),
     }
 
@@ -1936,11 +2613,13 @@ def generer_rapport_general_global(date_debut=None, date_fin=None):
         total_frais=Sum('montant', filter=Q(type_mouvement='FRAIS'))
     )
 
+    total_fond_initial = caisses.aggregate(total=Sum('fond_initial'))['total'] or 0
+    total_fond_disponible = caisses.aggregate(total=Sum('fond_disponible'))['total'] or 0
     fonds = {
-        'fond_initial': float(caisses.aggregate(total=Sum('fond_initial'))['total'] or 0),
-        'fond_disponible': float(caisses.aggregate(total=Sum('fond_disponible'))['total'] or 0),
-        'montant_total_prets': float(caisses.aggregate(total=Sum('montant_total_prets'))['total'] or 0),
-        'solde_disponible': float((caisses.aggregate(fd=Sum('fond_disponible'))['fd'] or 0) - (caisses.aggregate(mp=Sum('montant_total_prets'))['mp'] or 0)),
+        'fond_initial': float(total_fond_initial),
+        'fond_disponible': float(total_fond_disponible),
+        'montant_total_prets': float(total_prets_accordes),
+        'solde_disponible': float((total_fond_initial or 0) + (total_fond_disponible or 0)),
     }
 
     echeances_retard = {
@@ -1971,12 +2650,18 @@ def generer_rapport_financier_caisse(caisse, date_debut=None, date_fin=None):
     from django.db.models import Sum, Q
     from django.utils import timezone
     
-    # Filtres de date
-    filtres_date = Q()
+    # Filtres de date (timezone-aware)
+    from django.utils import timezone
+    start_dt = end_dt = None
     if date_debut:
-        filtres_date &= Q(date_mouvement__gte=date_debut)
+        start_dt = timezone.make_aware(datetime.combine(date_debut, time.min), timezone.get_current_timezone())
     if date_fin:
-        filtres_date &= Q(date_mouvement__lte=date_fin)
+        end_dt = timezone.make_aware(datetime.combine(date_fin, time.max), timezone.get_current_timezone())
+    filtres_date = Q()
+    if start_dt:
+        filtres_date &= Q(date_mouvement__gte=start_dt)
+    if end_dt:
+        filtres_date &= Q(date_mouvement__lte=end_dt)
     
     # Mouvements de fonds détaillés
     mouvements = caisse.mouvements_fonds.filter(filtres_date).order_by('-date_mouvement')
@@ -2009,10 +2694,31 @@ def generer_rapport_financier_caisse(caisse, date_debut=None, date_fin=None):
             'description': mouvement.description
         })
     
-    # Montants des prêts en cours et remboursés (ignorer les prêts non octroyés)
-    total_prets_octroyes = caisse.prets.filter(statut='EN_COURS').aggregate(total=Sum('montant_accord'))['total'] or 0
-    total_prets_rembourses = caisse.prets.filter(statut='REMBOURSE').aggregate(total=Sum('montant_accord'))['total'] or 0
-    total_prets_caisse = (total_prets_octroyes or 0) + (total_prets_rembourses or 0)
+    # Synthèse des prêts par statut et montants
+    from django.db.models import F, ExpressionWrapper, DecimalField
+    prets_caisse = caisse.prets.all()
+    total_prets_caisse = prets_caisse.filter(statut__in=['EN_COURS','REMBOURSE','EN_RETARD'])\
+        .aggregate(total=Sum('montant_accord'))['total'] or 0
+    total_prets_octroyes = prets_caisse.filter(statut='EN_COURS').aggregate(total=Sum('montant_accord'))['total'] or 0
+    total_prets_rembourses_montant = prets_caisse.aggregate(total=Sum('montant_rembourse'))['total'] or 0
+    nb_attente = prets_caisse.filter(statut__in=['EN_ATTENTE','EN_ATTENTE_ADMIN']).count()
+    nb_en_cours = prets_caisse.filter(statut='EN_COURS').count()
+    nb_rembourses = prets_caisse.filter(statut='REMBOURSE').count()
+    nb_en_retard = prets_caisse.filter(statut='EN_RETARD').count()
+    # Reste à rembourser (sur EN_COURS + EN_RETARD)
+    restant_qs = prets_caisse.filter(statut__in=['EN_COURS','EN_RETARD']).annotate(
+        restant=ExpressionWrapper((F('montant_accord') - F('montant_rembourse')), output_field=DecimalField(max_digits=15, decimal_places=2))
+    )
+    montant_restant = restant_qs.aggregate(total=Sum('restant'))['total'] or 0
+    # Taux de remboursement
+    taux_remb = float(total_prets_rembourses_montant)/float(total_prets_caisse) * 100 if float(total_prets_caisse) > 0 else 0.0
+    # Appréciation
+    if taux_remb >= 80:
+        appreciation = 'Très bon'
+    elif taux_remb >= 50:
+        appreciation = 'Satisfaisant'
+    else:
+        appreciation = 'Faible'
 
     # Liste des prêts (membres) à afficher dans le PDF (états pertinents)
     prets_membres_qs = caisse.prets.select_related('membre').filter(
@@ -2038,11 +2744,24 @@ def generer_rapport_financier_caisse(caisse, date_debut=None, date_fin=None):
             'fond_initial': float(caisse.fond_initial),
             'fond_disponible': float(caisse.fond_disponible),
             'montant_total_prets': float(total_prets_caisse),
-            'solde_disponible': float((caisse.fond_disponible or 0) - (total_prets_caisse or 0)),
+            'montant_total_rembourse': float(total_prets_rembourses_montant),
+            'montant_total_restant': float(montant_restant),
+            'solde_disponible': float((caisse.fond_initial or 0) + (caisse.fond_disponible or 0)),
+        },
+        'prets_synthese': {
+            'total_prets_montant': float(total_prets_caisse),
+            'total_prets_rembourse_montant': float(total_prets_rembourses_montant),
+            'total_prets_restant_montant': float(montant_restant),
+            'nombre_en_attente': nb_attente,
+            'nombre_en_cours': nb_en_cours,
+            'nombre_en_retard': nb_en_retard,
+            'nombre_rembourses': nb_rembourses,
+            'taux_remboursement': round(taux_remb, 2),
+            'appreciation': appreciation,
         },
         'prets_financiers': {
             'octroyes_total': float(total_prets_octroyes),
-            'rembourses_total': float(total_prets_rembourses),
+            'rembourses_total': float(prets_caisse.filter(statut='REMBOURSE').aggregate(total=Sum('montant_accord'))['total'] or 0),
         },
         'mouvements': {
             'stats_par_type': list(stats_mouvements),
@@ -2060,11 +2779,17 @@ def generer_rapport_financier_caisse(caisse, date_debut=None, date_fin=None):
 def generer_rapport_financier_global(date_debut=None, date_fin=None):
     """Rapport financier agrégé pour toutes les caisses."""
     from django.db.models import Sum, Q
-    filtres_date = Q()
+    from django.utils import timezone
+    start_dt = end_dt = None
     if date_debut:
-        filtres_date &= Q(date_mouvement__gte=date_debut)
+        start_dt = timezone.make_aware(datetime.combine(date_debut, time.min), timezone.get_current_timezone())
     if date_fin:
-        filtres_date &= Q(date_mouvement__lte=date_fin)
+        end_dt = timezone.make_aware(datetime.combine(date_fin, time.max), timezone.get_current_timezone())
+    filtres_date = Q()
+    if start_dt:
+        filtres_date &= Q(date_mouvement__gte=start_dt)
+    if end_dt:
+        filtres_date &= Q(date_mouvement__lte=end_dt)
 
     mouvements = MouvementFond.objects.filter(filtres_date).order_by('-date_mouvement')
     stats_mouvements = list(
@@ -2082,21 +2807,26 @@ def generer_rapport_financier_global(date_debut=None, date_fin=None):
             'description': mv.description,
         })
 
-    from django.db.models import Sum as DSum
-    from .models import Caisse
-    # Agrégations robustes (montant_total_prets basé sur les prêts réels)
+    from django.db.models import Sum as DSum, F, ExpressionWrapper, DecimalField
+    from .models import Caisse, Pret
+    # Agrégations robustes (montant_total_prets = EN_COURS + REMBOURSE + EN_RETARD)
     total_fond_initial = Caisse.objects.aggregate(total=DSum('fond_initial'))['total'] or 0
     total_fond_disponible = Caisse.objects.aggregate(total=DSum('fond_disponible'))['total'] or 0
-    from .models import Pret
-    total_prets_octroyes = Pret.objects.filter(statut='EN_COURS').aggregate(total=DSum('montant_accord'))['total'] or 0
+    total_prets_accordes = Pret.objects.filter(statut__in=['EN_COURS', 'REMBOURSE', 'EN_RETARD']).aggregate(total=DSum('montant_accord'))['total'] or 0
     total_prets_rembourses = Pret.objects.filter(statut='REMBOURSE').aggregate(total=DSum('montant_accord'))['total'] or 0
-    total_prets_accordes = (total_prets_octroyes or 0) + (total_prets_rembourses or 0)
+    total_prets_octroyes = Pret.objects.filter(statut='EN_COURS').aggregate(total=DSum('montant_accord'))['total'] or 0
+    restant_qs = Pret.objects.filter(statut__in=['EN_COURS', 'EN_RETARD']).annotate(
+        restant=ExpressionWrapper((F('montant_accord') - F('montant_rembourse')), output_field=DecimalField(max_digits=15, decimal_places=2))
+    )
+    total_prets_restants = restant_qs.aggregate(total=DSum('restant'))['total'] or 0
 
     fonds_actuels = {
         'fond_initial': float(total_fond_initial),
         'fond_disponible': float(total_fond_disponible),
         'montant_total_prets': float(total_prets_accordes),
-        'solde_disponible': float((total_fond_disponible or 0) - (total_prets_accordes or 0)),
+        'montant_total_rembourse': float(Pret.objects.aggregate(total=DSum('montant_rembourse'))['total'] or 0),
+        'montant_total_restant': float(total_prets_restants),
+        'solde_disponible': float((total_fond_initial or 0) + (total_fond_disponible or 0)),
     }
 
     # Synthèse par caisse (pour affichage détaillé dans le PDF)
@@ -2112,7 +2842,7 @@ def generer_rapport_financier_global(date_debut=None, date_fin=None):
             'fond_initial': float(c.fond_initial or 0),
             'fond_disponible': float(c.fond_disponible or 0),
             'montant_total_prets': float(total_prets_caisse),
-            'solde_disponible': float((c.fond_disponible or 0) - (total_prets_caisse or 0)),
+            'solde_disponible': float((c.fond_initial or 0) + (c.fond_disponible or 0)),
         })
 
     prets_financiers = {
@@ -2607,3 +3337,1464 @@ def generate_application_guide(request):
     except Exception as e:
         messages.error(request, f"Erreur lors de la génération du PDF: {str(e)}")
         return redirect('gestion_caisses:dashboard')
+
+
+class TransfertCaisseViewSet(viewsets.ModelViewSet):
+    """Vue pour la gestion des transferts entre caisses"""
+    queryset = TransfertCaisse.objects.select_related(
+        'caisse_source', 'caisse_destination', 'utilisateur', 
+        'mouvement_source', 'mouvement_destination'
+    ).all()
+    serializer_class = TransfertCaisseSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['type_transfert', 'statut', 'caisse_source', 'caisse_destination']
+    search_fields = ['description', 'caisse_source__nom_association', 'caisse_destination__nom_association']
+    ordering_fields = ['date_transfert', 'montant']
+    ordering = ['-date_transfert']
+    
+    def get_queryset(self):
+        """Filtrer les transferts selon les permissions de l'utilisateur"""
+        queryset = super().get_queryset()
+        
+        # Si l'utilisateur n'est pas admin, filtrer par sa caisse
+        if not self.request.user.is_superuser:
+            caisse_user = get_user_caisse(self.request.user)
+            if caisse_user:
+                queryset = queryset.filter(
+                    models.Q(caisse_source=caisse_user) | 
+                    models.Q(caisse_destination=caisse_user)
+                )
+        
+        return queryset
+    
+    @action(detail=True, methods=['post'], url_path='executer')
+    def executer_transfert(self, request, pk=None):
+        """Exécuter un transfert en attente"""
+        transfert = self.get_object()
+        
+        if transfert.statut != 'EN_ATTENTE':
+            return Response(
+                {'error': f'Le transfert est déjà en statut {transfert.get_statut_display()}'},
+                status=400
+            )
+        
+        try:
+            transfert.executer_transfert()
+            return Response({
+                'message': 'Transfert exécuté avec succès',
+                'statut': transfert.statut
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de l\'exécution du transfert: {str(e)}'},
+                status=400
+            )
+    
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler_transfert(self, request, pk=None):
+        """Annuler un transfert validé"""
+        transfert = self.get_object()
+        
+        if transfert.statut != 'VALIDE':
+            return Response(
+                {'error': f'Seuls les transferts validés peuvent être annulés'},
+                status=400
+            )
+        
+        try:
+            transfert.annuler_transfert()
+            return Response({
+                'message': 'Transfert annulé avec succès',
+                'statut': transfert.statut
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de l\'annulation du transfert: {str(e)}'},
+                status=400
+            )
+    
+    @action(detail=False, methods=['get'], url_path='statistiques')
+    def statistiques_transferts(self, request):
+        """Obtenir des statistiques sur les transferts"""
+        queryset = self.get_queryset()
+        
+        # Statistiques par type de transfert
+        stats_par_type = queryset.values('type_transfert').annotate(
+            total_montant=Sum('montant'),
+            nombre_transferts=Count('id'),
+            montant_moyen=Avg('montant')
+        )
+        
+        # Statistiques par statut
+        stats_par_statut = queryset.values('statut').annotate(
+            total_montant=Sum('montant'),
+            nombre_transferts=Count('id')
+        )
+        
+        # Évolution des transferts (6 derniers mois)
+        evolution_transferts = []
+        for i in range(6):
+            date = timezone.now() - timedelta(days=30*i)
+            mois = date.strftime('%Y-%m')
+            count = queryset.filter(date_transfert__year=date.year, date_transfert__month=date.month).count()
+            montant_total = queryset.filter(
+                date_transfert__year=date.year, 
+                date_transfert__month=date.month
+            ).aggregate(total=Sum('montant'))['total'] or 0
+            
+            evolution_transferts.append({
+                'mois': mois, 
+                'nombre': count,
+                'montant_total': float(montant_total)
+            })
+        
+        return Response({
+            'stats_par_type': list(stats_par_type),
+            'stats_par_statut': list(stats_par_statut),
+            'evolution_transferts': evolution_transferts,
+            'total_transferts': queryset.count(),
+            'montant_total_transferts': float(queryset.aggregate(total=Sum('montant'))['total'] or 0)
+        })
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Vue pour la consultation des journaux d'audit (lecture seule)"""
+    queryset = AuditLog.objects.select_related('utilisateur').all()
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAdminUser]  # Seuls les administrateurs peuvent consulter les logs
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['action', 'modele', 'utilisateur']
+    search_fields = ['modele', 'details']
+    ordering_fields = ['date_action', 'action']
+    ordering = ['-date_action']
+
+# ============================================================================
+# VUES POUR RAPPORTS ET ÉTATS ADMIN
+# ============================================================================
+
+@login_required
+def rapport_general_view(request):
+    """Vue pour générer le rapport général du système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données pour le rapport
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Statistiques générales
+    total_caisses = Caisse.objects.count()
+    total_membres = Membre.objects.count()
+    total_prets = Pret.objects.count()
+    total_fonds = Caisse.objects.aggregate(total=Sum('fond_disponible'))['total'] or 0
+    
+    # Statistiques des prêts
+    prets_en_cours = Pret.objects.filter(statut='EN_COURS').count()
+    prets_rembourses = Pret.objects.filter(statut='REMBOURSE').count()
+    prets_valides = Pret.objects.filter(statut='VALIDE').count()
+    
+    # Montants
+    total_montant_prets = Pret.objects.aggregate(total=Sum('montant_accord'))['total'] or 0
+    total_montant_rembourse = Pret.objects.aggregate(total=Sum('montant_rembourse'))['total'] or 0
+    
+    # Caisse générale
+    try:
+        caisse_generale = CaisseGenerale.get_instance()
+        solde_reserve = caisse_generale.solde_reserve
+        solde_systeme = caisse_generale.solde_systeme
+    except:
+        solde_reserve = 0
+        solde_systeme = 0
+    
+    # Transferts
+    try:
+        total_transferts = TransfertCaisse.objects.count()
+        transferts_valides = TransfertCaisse.objects.filter(statut='VALIDE').count()
+    except:
+        total_transferts = 0
+        transferts_valides = 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'total_caisses': total_caisses,
+        'total_membres': total_membres,
+        'total_prets': total_prets,
+        'total_fonds': total_fonds,
+        'prets_en_cours': prets_en_cours,
+        'prets_rembourses': prets_rembourses,
+        'prets_valides': prets_valides,
+        'total_montant_prets': total_montant_prets,
+        'total_montant_rembourse': total_montant_rembourse,
+        'solde_reserve': solde_reserve,
+        'solde_systeme': solde_systeme,
+        'total_transferts': total_transferts,
+        'transferts_valides': transferts_valides,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_general.html', context)
+
+
+@login_required
+def rapport_financier_view(request):
+    """Vue pour générer le rapport financier complet"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données financières
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Fonds des caisses
+    caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+        total_prets=Count('prets'),
+        prets_actifs=Count('prets', filter=Q(prets__statut='EN_COURS')),
+        total_montant_prets=Sum('prets__montant_accord'),
+        total_montant_rembourse=Sum('prets__montant_rembourse')
+    )
+    
+    # Mouvements de fonds
+    mouvements = MouvementFond.objects.select_related('caisse').filter(
+        date_mouvement__gte=last_month
+    ).order_by('-date_mouvement')
+    
+    # Statistiques par type de mouvement
+    stats_mouvements = mouvements.values('type_mouvement').annotate(
+        total=Sum('montant'),
+        nombre=Count('id')
+    )
+    
+    # Caisse générale
+    try:
+        caisse_generale = CaisseGenerale.get_instance()
+        solde_reserve = caisse_generale.solde_reserve
+        solde_systeme = caisse_generale.solde_systeme
+        solde_total_caisses = caisse_generale.solde_total_caisses
+    except:
+        solde_reserve = 0
+        solde_systeme = 0
+        solde_total_caisses = 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'caisses': caisses,
+        'mouvements': mouvements,
+        'stats_mouvements': stats_mouvements,
+        'solde_reserve': solde_reserve,
+        'solde_systeme': solde_systeme,
+        'solde_total_caisses': solde_total_caisses,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_financier.html', context)
+
+
+@login_required
+def rapport_prets_view(request):
+    """Vue pour générer le rapport des prêts"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des prêts
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Prêts avec détails
+    prets = Pret.objects.select_related('membre', 'caisse').annotate(
+        total_echeances=Count('echeances'),
+        echeances_payees=Count('echeances', filter=Q(echeances__statut='PAYEE'))
+    ).order_by('-date_demande')
+    
+    # Statistiques par statut
+    stats_par_statut = prets.values('statut').annotate(
+        total=Count('id'),
+        montant_total=Sum('montant_accord'),
+        montant_rembourse=Sum('montant_rembourse')
+    )
+    
+    # Statistiques par caisse
+    stats_par_caisse = prets.values('caisse__nom_association').annotate(
+        total=Count('id'),
+        montant_total=Sum('montant_accord'),
+        montant_rembourse=Sum('montant_rembourse')
+    )
+    
+    # Prêts en retard
+    prets_en_retard = prets.filter(
+        echeances__date_echeance__lt=today,
+        echeances__statut='EN_ATTENTE',
+        statut='EN_COURS'
+    ).distinct()
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'prets': prets,
+        'stats_par_statut': stats_par_statut,
+        'stats_par_caisse': stats_par_caisse,
+        'prets_en_retard': prets_en_retard,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_prets.html', context)
+
+
+@login_required
+def rapport_membres_view(request):
+    """Vue pour générer le rapport des membres"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des membres
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Membres avec statistiques
+    membres = Membre.objects.filter(statut='ACTIF').annotate(
+        total_prets=Count('prets'),
+        prets_actifs=Count('prets', filter=Q(prets__statut='EN_COURS')),
+        montant_total_prets=Sum('prets__montant_accord'),
+        montant_total_rembourse=Sum('prets__montant_rembourse')
+    ).order_by('nom', 'prenoms')
+    
+    # Statistiques par région
+    stats_par_region = membres.values('caisse__region__nom').annotate(
+        total=Count('id'),
+        nombre_prets=Sum('prets__id'),
+        montant_prets=Sum('prets__montant_accord')
+    )
+    
+    # Statistiques par préfecture
+    stats_par_prefecture = membres.values('caisse__prefecture__nom').annotate(
+        total=Count('id'),
+        nombre_prets=Sum('prets__id'),
+        montant_prets=Sum('prets__montant_accord')
+    )
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'membres': membres,
+        'stats_par_region': stats_par_region,
+        'stats_par_prefecture': stats_par_prefecture,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_membres.html', context)
+
+
+@login_required
+def rapport_transferts_view(request):
+    """Vue pour générer le rapport des transferts"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des transferts
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Transferts avec détails
+    try:
+        transferts = TransfertCaisse.objects.select_related(
+            'caisse_source', 'caisse_destination', 'utilisateur'
+        ).order_by('-date_transfert')
+        
+        # Statistiques par type
+        stats_par_type = transferts.values('type_transfert').annotate(
+            total=Count('id'),
+            montant_total=Sum('montant')
+        )
+        
+        # Statistiques par statut
+        stats_par_statut = transferts.values('statut').annotate(
+            total=Count('id'),
+            montant_total=Sum('montant')
+        )
+        
+        # Statistiques par caisse source
+        stats_par_caisse_source = transferts.values('caisse_source__nom_association').annotate(
+            total=Count('id'),
+            montant_total=Sum('montant')
+        )
+        
+    except:
+        transferts = []
+        stats_par_type = []
+        stats_par_statut = []
+        stats_par_caisse_source = []
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'transferts': transferts,
+        'stats_par_type': stats_par_type,
+        'stats_par_statut': stats_par_statut,
+        'stats_par_caisse_source': stats_par_caisse_source,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_transferts.html', context)
+
+
+@login_required
+def rapport_caisses_view(request):
+    """Vue pour générer le rapport des caisses"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des caisses
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Caisses avec statistiques
+    caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+        total_membres=Count('membres'),
+        total_prets=Count('prets'),
+        prets_actifs=Count('prets', filter=Q(prets__statut='EN_COURS')),
+        total_montant_prets=Sum('prets__montant_accord'),
+        total_montant_rembourse=Sum('prets__montant_rembourse')
+    ).order_by('nom_association')
+    
+    # Statistiques par région
+    stats_par_region = caisses.values('region__nom').annotate(
+        total=Count('id'),
+        total_fonds=Sum('fond_disponible'),
+        total_membres=Sum('membres'),
+        total_prets=Sum('prets')
+    )
+    
+    # Statistiques par préfecture
+    stats_par_prefecture = caisses.values('prefecture__nom').annotate(
+        total=Count('id'),
+        total_fonds=Sum('fond_disponible'),
+        total_membres=Sum('membres'),
+        total_prets=Sum('prets')
+    )
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'caisses': caisses,
+        'stats_par_region': stats_par_region,
+        'stats_par_prefecture': stats_par_prefecture,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_caisses.html', context)
+
+
+@login_required
+def rapport_audit_view(request):
+    """Vue pour générer le rapport d'audit"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données d'audit
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.now().date()
+    last_month = today - timedelta(days=30)
+    
+    # Logs d'audit
+    logs = AuditLog.objects.select_related('utilisateur').filter(
+        date_action__gte=last_month
+    ).order_by('-date_action')
+    
+    # Statistiques par action
+    stats_par_action = logs.values('action').annotate(
+        total=Count('id')
+    )
+    
+    # Statistiques par modèle
+    stats_par_modele = logs.values('modele').annotate(
+        total=Count('id')
+    )
+    
+    # Statistiques par utilisateur
+    stats_par_utilisateur = logs.values('utilisateur__username').annotate(
+        total=Count('id')
+    ).filter(utilisateur__isnull=False)
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'logs': logs,
+        'stats_par_action': stats_par_action,
+        'stats_par_modele': stats_par_modele,
+        'stats_par_utilisateur': stats_par_utilisateur,
+    }
+    
+    return render(request, 'gestion_caisses/rapports/rapport_audit.html', context)
+
+
+# ============================================================================
+# VUES POUR IMPRESSION DES ÉTATS
+# ============================================================================
+
+@login_required
+def etat_general_print_view(request):
+    """Vue pour imprimer l'état général du système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données pour l'impression
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    
+    today = timezone.now().date()
+    
+    # Données générales
+    total_caisses = Caisse.objects.count()
+    total_membres = Membre.objects.count()
+    total_prets = Pret.objects.count()
+    total_fonds = Caisse.objects.aggregate(total=Sum('fond_disponible'))['total'] or 0
+    
+    # Caisse générale
+    try:
+        caisse_generale = CaisseGenerale.get_instance()
+        solde_reserve = caisse_generale.solde_reserve
+        solde_systeme = caisse_generale.solde_systeme
+    except:
+        solde_reserve = 0
+        solde_systeme = 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'total_caisses': total_caisses,
+        'total_membres': total_membres,
+        'total_prets': total_prets,
+        'total_fonds': total_fonds,
+        'solde_reserve': solde_reserve,
+        'solde_systeme': solde_systeme,
+    }
+    
+    response = render(request, 'gestion_caisses/impression/etat_general.html', context)
+    response['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+
+@login_required
+def etat_financier_print_view(request):
+    """Vue pour imprimer l'état financier"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données financières
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    
+    today = timezone.now().date()
+    
+    # Caisses avec détails
+    caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+        total_membres=Count('membres'),
+        total_prets=Count('prets'),
+        total_montant_prets=Sum('prets__montant_accord'),
+        total_montant_rembourse=Sum('prets__montant_rembourse')
+    ).order_by('nom_association')
+    
+    # Caisse générale
+    try:
+        caisse_generale = CaisseGenerale.get_instance()
+        solde_reserve = caisse_generale.solde_reserve
+        solde_systeme = caisse_generale.solde_systeme
+    except:
+        solde_reserve = 0
+        solde_systeme = 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'caisses': caisses,
+        'solde_reserve': solde_reserve,
+        'solde_systeme': solde_systeme,
+    }
+    
+    response = render(request, 'gestion_caisses/impression/etat_financier.html', context)
+    response['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+
+@login_required
+def etat_prets_print_view(request):
+    """Vue pour imprimer l'état des prêts"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des prêts
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    
+    today = timezone.now().date()
+    
+    # Prêts avec détails
+    prets = Pret.objects.select_related('membre', 'caisse').annotate(
+        total_echeances=Count('echeances'),
+        echeances_payees=Count('echeances', filter=Q(echeances__statut='PAYEE'))
+    ).order_by('-date_demande')
+    
+    # Statistiques
+    total_prets = prets.count()
+    prets_en_cours = prets.filter(statut='EN_COURS').count()
+    prets_rembourses = prets.filter(statut='REMBOURSE').count()
+    total_montant = prets.aggregate(total=Sum('montant_accord'))['total'] or 0
+    total_rembourse = prets.aggregate(total=Sum('montant_rembourse'))['total'] or 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'prets': prets,
+        'total_prets': total_prets,
+        'prets_en_cours': prets_en_cours,
+        'prets_rembourses': prets_rembourses,
+        'total_montant': total_montant,
+        'total_rembourse': total_rembourse,
+    }
+    
+    response = render(request, 'gestion_caisses/impression/etat_prets.html', context)
+    response['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+
+@login_required
+def etat_caisses_print_view(request):
+    """Vue pour imprimer l'état des caisses"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des caisses
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    
+    today = timezone.now().date()
+    
+    # Caisses avec statistiques
+    caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+        total_membres=Count('membres'),
+        total_prets=Count('prets'),
+        total_montant_prets=Sum('prets__montant_accord'),
+        total_montant_rembourse=Sum('prets__montant_rembourse')
+    ).order_by('nom_association')
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'caisses': caisses,
+    }
+    
+    response = render(request, 'gestion_caisses/impression/etat_caisses.html', context)
+    response['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+
+@login_required
+def etat_transferts_print_view(request):
+    """Vue pour imprimer l'état des transferts"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Récupérer les données des transferts
+    from django.db.models import Sum, Count, Q
+    from django.utils import timezone
+    
+    today = timezone.now().date()
+    
+    try:
+        # Transferts avec détails
+        transferts = TransfertCaisse.objects.select_related(
+            'caisse_source', 'caisse_destination', 'utilisateur'
+        ).order_by('-date_transfert')
+        
+        # Statistiques
+        total_transferts = transferts.count()
+        transferts_valides = transferts.filter(statut='VALIDE').count()
+        montant_total = transferts.filter(statut='VALIDE').aggregate(total=Sum('montant'))['total'] or 0
+        
+    except:
+        transferts = []
+        total_transferts = 0
+        transferts_valides = 0
+        montant_total = 0
+    
+    context = {
+        'user': request.user,
+        'date_generation': today,
+        'transferts': transferts,
+        'total_transferts': total_transferts,
+        'transferts_valides': transferts_valides,
+        'montant_total': montant_total,
+    }
+    
+    response = render(request, 'gestion_caisses/impression/etat_transferts.html', context)
+    response['Content-Type'] = 'text/html; charset=utf-8'
+    return response
+
+
+# ============================================================================
+# VUES POUR EXPORT ET TÉLÉCHARGEMENT
+# ============================================================================
+
+@login_required
+def export_rapport_pdf_view(request, type_rapport):
+    """Vue pour exporter un rapport en PDF"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique d'export PDF selon le type de rapport
+    # À implémenter avec ReportLab ou WeasyPrint
+    
+    return HttpResponse("Export PDF en cours de développement")
+
+
+@login_required
+def export_rapport_excel_view(request, type_rapport):
+    """Vue pour exporter un rapport en Excel"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique d'export Excel selon le type de rapport
+    # À implémenter avec openpyxl ou xlsxwriter
+    
+    return HttpResponse("Export Excel en cours de développement")
+
+
+@login_required
+def export_rapport_csv_view(request, type_rapport):
+    """Vue pour exporter un rapport en CSV"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique d'export CSV selon le type de rapport
+    # À implémenter avec le module csv de Python
+    
+    return HttpResponse("Export CSV en cours de développement")
+
+
+# ============================================================================
+# VUES POUR MAINTENANCE ET SYSTÈME
+# ============================================================================
+
+@login_required
+def synchroniser_systeme_view(request):
+    """Vue pour synchroniser le système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    try:
+        # Synchroniser la caisse générale
+        caisse_generale = CaisseGenerale.get_instance()
+        caisse_generale.recalculer_total_caisses()
+        
+        messages.success(request, "Système synchronisé avec succès !")
+    except Exception as e:
+        messages.error(request, f"Erreur lors de la synchronisation : {str(e)}")
+    
+    return redirect('admin:gestion_caisses_admindashboard_changelist')
+
+
+@login_required
+def verifier_integrite_view(request):
+    """Vue pour vérifier l'intégrité du système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique de vérification d'intégrité
+    # À implémenter selon les besoins
+    
+    messages.info(request, "Vérification d'intégrité en cours de développement")
+    return redirect('admin:gestion_caisses_admindashboard_changelist')
+
+
+@login_required
+def nettoyer_donnees_view(request):
+    """Vue pour nettoyer les données du système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique de nettoyage des données
+    # À implémenter selon les besoins
+    
+    messages.info(request, "Nettoyage des données en cours de développement")
+    return redirect('admin:gestion_caisses_admindashboard_changelist')
+
+
+@login_required
+def sauvegarder_systeme_view(request):
+    """Vue pour sauvegarder le système"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
+    
+    # Logique de sauvegarde du système
+    # À implémenter selon les besoins
+    
+    messages.info(request, "Sauvegarde du système en cours de développement")
+    return redirect('admin:gestion_caisses_admindashboard_changelist')
+
+
+# ============================================================================
+# FRONTEND ADMIN PERSONNALISÉ (rapports/états)
+# ============================================================================
+
+# ============================================================================
+# VUES POUR LA GÉNÉRATION DES RAPPORTS PDF
+# ============================================================================
+
+@staff_member_required
+def generer_rapport_pdf_admin(request):
+    """Vue admin pour générer des rapports PDF"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        # Vérifier le token CSRF
+        if not request.headers.get('X-CSRFToken'):
+            return JsonResponse({'success': False, 'message': 'Token CSRF manquant'}, status=403)
+        
+        # Récupérer les données JSON
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        
+        # Validation des données
+        type_rapport = data.get('type_rapport')
+        if not type_rapport:
+            return JsonResponse({'success': False, 'message': 'Type de rapport requis'}, status=400)
+        
+        date_debut = data.get('date_debut')
+        date_fin = data.get('date_fin')
+        if not date_debut or not date_fin:
+            return JsonResponse({'success': False, 'message': 'Dates de début et fin requises'}, status=400)
+        
+        # Convertir les dates
+        try:
+            date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
+            date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({'success': False, 'message': 'Format de date invalide'}, status=400)
+        
+        # Récupérer la caisse si spécifiée
+        caisse = None
+        if data.get('caisse'):
+            try:
+                caisse = Caisse.objects.get(pk=data['caisse'])
+            except Caisse.DoesNotExist:
+                return JsonResponse({'success': False, 'message': 'Caisse introuvable'}, status=404)
+        
+        # Créer le rapport
+        rapport = RapportActivite.objects.create(
+            type_rapport=type_rapport,
+            caisse=caisse,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            notes=data.get('notes', ''),
+            statut='EN_ATTENTE',
+            genere_par=request.user
+        )
+        
+        # Générer le PDF
+        try:
+            pdf_content = generate_rapport_pdf(rapport)
+            
+            # Sauvegarder le fichier
+            filename = f"rapport_{type_rapport}_{rapport.pk}.pdf"
+            rapport.fichier_pdf.save(filename, ContentFile(pdf_content), save=True)
+            
+            rapport.statut = 'GENERE'
+            rapport.date_generation = timezone.now()
+            rapport.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Rapport généré avec succès',
+                'rapport_id': rapport.pk,
+                'pdf_url': rapport.fichier_pdf.url
+            })
+            
+        except Exception as e:
+            rapport.statut = 'ECHEC'
+            rapport.notes = f"Erreur lors de la génération: {str(e)}"
+            rapport.save()
+            
+            return JsonResponse({
+                'success': False,
+                'message': f'Erreur lors de la génération du PDF: {str(e)}'
+            }, status=500)
+            
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Erreur inattendue: {str(e)}'
+        }, status=500)
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def telecharger_rapport_pdf(request, rapport_id):
+    """Télécharge un rapport PDF"""
+    try:
+        rapport = get_object_or_404(RapportActivite, pk=rapport_id)
+        
+        if not rapport.fichier_pdf:
+            messages.error(request, 'Ce rapport n\'a pas de fichier PDF.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        if rapport.statut != 'GENERE':
+            messages.warning(request, 'Ce rapport n\'est pas encore généré.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        # Vérifier que le fichier existe
+        if not os.path.exists(rapport.fichier_pdf.path):
+            messages.error(request, 'Le fichier PDF n\'existe plus sur le serveur.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        # Lire et retourner le fichier
+        with open(rapport.fichier_pdf.path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="rapport_{rapport.type_rapport}_{rapport.pk}.pdf"'
+            return response
+            
+    except Exception as e:
+        messages.error(request, f'Erreur lors du téléchargement: {str(e)}')
+        return redirect('admin:gestion_caisses_rapportactivite_changelist')
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def previsualiser_rapport_pdf(request, rapport_id):
+    """Prévisualise un rapport PDF dans le navigateur"""
+    try:
+        rapport = get_object_or_404(RapportActivite, pk=rapport_id)
+        
+        if not rapport.fichier_pdf:
+            messages.error(request, 'Ce rapport n\'a pas de fichier PDF.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        if rapport.statut != 'GENERE':
+            messages.warning(request, 'Ce rapport n\'est pas encore généré.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        # Vérifier que le fichier existe
+        if not os.path.exists(rapport.fichier_pdf.path):
+            messages.error(request, 'Le fichier PDF n\'existe plus sur le serveur.')
+            return redirect('admin:gestion_caisses_rapportactivite_changelist')
+        
+        # Lire et retourner le fichier pour prévisualisation
+        with open(rapport.fichier_pdf.path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/pdf')
+            response['Content-Disposition'] = 'inline'
+            return response
+            
+    except Exception as e:
+        messages.error(request, f'Erreur lors de la prévisualisation: {str(e)}')
+        return redirect('admin:gestion_caisses_rapportactivite_changelist')
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def lister_caisses_rapport(request):
+    """Retourne la liste des caisses pour les rapports"""
+    try:
+        caisses = Caisse.objects.all().order_by('nom_association').values('id', 'nom_association', 'region')
+        return JsonResponse({'caisses': list(caisses)})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def export_rapport_excel_view(request, type_rapport):
+    """Vue pour exporter un rapport en Excel"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        # Récupérer les données JSON
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        
+        # Créer un rapport temporaire pour l'export
+        rapport = RapportActivite(
+            type_rapport=type_rapport,
+            caisse_id=data.get('caisse'),
+            date_debut=datetime.strptime(data.get('date_debut'), '%Y-%m-%d').date() if data.get('date_debut') else None,
+            date_fin=datetime.strptime(data.get('date_fin'), '%Y-%m-%d').date() if data.get('date_fin') else None,
+            notes=data.get('notes', ''),
+            statut='EN_ATTENTE'
+        )
+        
+        # Générer l'export Excel
+        response = export_rapport_excel(rapport)
+        return response
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Erreur lors de l\'export Excel: {str(e)}'
+        }, status=500)
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def export_rapport_csv_view(request, type_rapport):
+    """Vue pour exporter un rapport en CSV"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        # Récupérer les données JSON
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        
+        # Créer un rapport temporaire pour l'export
+        rapport = RapportActivite(
+            type_rapport=type_rapport,
+            caisse_id=data.get('caisse'),
+            date_debut=datetime.strptime(data.get('date_debut'), '%Y-%m-%d').date() if data.get('date_debut') else None,
+            date_fin=datetime.strptime(data.get('date_fin'), '%Y-%m-%d').date() if data.get('date_fin') else None,
+            notes=data.get('notes', ''),
+            statut='EN_ATTENTE'
+        )
+        
+        # Générer l'export CSV
+        response = export_rapport_csv(rapport)
+        return response
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Erreur lors de l\'export CSV: {str(e)}'
+        }, status=500)
+
+# API: Gestion des dépenses
+class DepenseViewSet(viewsets.ModelViewSet):
+    """ViewSet pour la gestion des dépenses des caisses"""
+    serializer_class = DepenseSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['caisse']
+    search_fields = ['Objectifdepense', 'observation', 'caisse__nom_association']
+    ordering_fields = ['datedepense', 'montantdepense', 'date_creation']
+    ordering = ['-datedepense', '-date_creation']
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return Depense.objects.all()
+        # Pour les utilisateurs non admin: afficher les dépenses de leur caisse
+        try:
+            profil = getattr(user, 'profil_membre', None)
+            if profil and profil.caisse_id:
+                return Depense.objects.filter(caisse_id=profil.caisse_id)
+        except Exception:
+            pass
+        # Fallback: pour les agents, filtrer par leurs caisses liées
+        return Depense.objects.filter(caisse__agent__utilisateur=user)
+
+    def perform_create(self, serializer):
+        serializer.save(utilisateur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver_depense(self, request, pk=None):
+        """Approuver une dépense"""
+        depense = self.get_object()
+        notes = request.data.get('notes', '')
+        
+        if depense.statut != 'EN_COURS':
+            return Response(
+                {'error': 'Seules les dépenses en cours peuvent être approuvées'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validation de solde au moment de l'approbation
+        try:
+            if depense.caisse.solde_disponible_depenses < depense.montantdepense:
+                return Response(
+                    {'error': 'Solde insuffisant pour approuver cette dépense'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception:
+            pass
+        
+        depense.statut = 'APPROUVEE'
+        depense.approuve_par = request.user.profil_membre if hasattr(request.user, 'profil_membre') else None
+        depense.notes_approbation = notes
+        depense.save()
+        
+        serializer = self.get_serializer(depense)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter_depense(self, request, pk=None):
+        """Rejeter une dépense"""
+        depense = self.get_object()
+        notes = request.data.get('notes', '')
+        
+        if depense.statut != 'EN_COURS':
+            return Response(
+                {'error': 'Seules les dépenses en cours peuvent être rejetées'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        depense.statut = 'REJETEE'
+        depense.notes_approbation = notes
+        depense.save()
+        
+        serializer = self.get_serializer(depense)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='stats')
+    def depense_stats(self, request):
+        """Statistiques des dépenses pour une caisse"""
+        # Supporter à la fois ?caisse_id= et ?caisse=
+        caisse_id = request.query_params.get('caisse_id') or request.query_params.get('caisse')
+        # Fallback: déduire la caisse de l'utilisateur connecté si non fourni
+        if not caisse_id:
+            user_caisse = get_user_caisse(request.user)
+            if not user_caisse:
+                raise ValidationError({'caisse_id': "Paramètre requis. Utilisez 'caisse_id' ou 'caisse'."})
+            caisse_id = user_caisse.id
+        
+        qs = Depense.objects.filter(caisse_id=caisse_id)
+        
+        # Filtre période
+        debut = request.query_params.get('debut')
+        fin = request.query_params.get('fin')
+        if debut:
+            try:
+                debut_dt = datetime.strptime(debut, '%Y-%m-%d')
+                qs = qs.filter(date_depense__gte=debut_dt.date())
+            except Exception:
+                raise ValidationError({'debut': 'Format attendu YYYY-MM-DD'})
+        if fin:
+            try:
+                fin_dt = datetime.strptime(fin, '%Y-%m-%d')
+                qs = qs.filter(date_depense__lte=fin_dt.date())
+            except Exception:
+                raise ValidationError({'fin': 'Format attendu YYYY-MM-DD'})
+        
+        # Totaux par catégorie et statut
+        stats = qs.aggregate(
+            total_depenses=Sum('montantdepense') or 0,
+            nombre_depenses=Count('id')
+        )
+        
+        # Par catégorie
+        par_categorie = []
+        
+        # Calcul du solde disponible des dépenses basé sur les cotisations
+        try:
+            caisse_obj = Caisse.objects.get(id=caisse_id)
+            solde_depense = caisse_obj.solde_disponible_depenses
+        except Caisse.DoesNotExist:
+            raise ValidationError({'caisse_id': 'Caisse introuvable'})
+
+        return Response({
+            'caisse_id': int(caisse_id),
+            'solde_disponible': solde_depense,
+            'stats': stats,
+            'par_categorie': par_categorie
+        })
+
+
+class SalaireAgentViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les salaires des agents"""
+    queryset = SalaireAgent.objects.all()
+    serializer_class = SalaireAgentSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filtrer par agent, mois, année si spécifiés"""
+        queryset = super().get_queryset()
+        agent_id = self.request.query_params.get('agent_id')
+        mois = self.request.query_params.get('mois')
+        annee = self.request.query_params.get('annee')
+        if agent_id:
+            queryset = queryset.filter(agent_id=agent_id)
+        if mois:
+            queryset = queryset.filter(mois=mois)
+        if annee:
+            queryset = queryset.filter(annee=annee)
+        return queryset
+    
+    @action(detail=True, methods=['post'], url_path='calculer-bonus')
+    def calculer_bonus(self, request, pk=None):
+        """Calcule le bonus basé sur les nouvelles caisses créées"""
+        salaire = self.get_object()
+        montant_par_caisse = request.data.get('montant_par_caisse', 5000)
+        
+        try:
+            bonus = salaire.calculer_bonus_caisses(montant_par_caisse)
+            serializer = self.get_serializer(salaire)
+            return Response({
+                'message': f'Bonus calculé: {bonus} FCFA pour {salaire.nombre_nouvelles_caisses} caisses',
+                'salaire': serializer.data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors du calcul du bonus: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'], url_path='marquer-paye')
+    def marquer_paye(self, request, pk=None):
+        """Marque le salaire comme payé"""
+        salaire = self.get_object()
+        mode_paiement = request.data.get('mode_paiement', '')
+        
+        if salaire.statut == 'PAYE':
+            return Response(
+                {'error': 'Ce salaire est déjà marqué comme payé'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        salaire.statut = 'PAYE'
+        salaire.date_paiement = timezone.now()
+        salaire.mode_paiement = mode_paiement
+        salaire.save()
+        
+        serializer = self.get_serializer(salaire)
+        return Response({
+            'message': 'Salaire marqué comme payé',
+            'salaire': serializer.data
+        })
+    
+    @action(detail=False, methods=['get'], url_path='stats-mensuelles')
+    def stats_mensuelles(self, request):
+        """Statistiques mensuelles des salaires"""
+        mois = request.query_params.get('mois')
+        annee = request.query_params.get('annee')
+        
+        if not mois or not annee:
+            # Utiliser le mois et l'année actuels par défaut
+            now = timezone.now()
+            mois = mois or now.month
+            annee = annee or now.year
+        
+        try:
+            mois = int(mois)
+            annee = int(annee)
+        except ValueError:
+            return Response(
+                {'error': 'Mois et année doivent être des nombres'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        salaires = SalaireAgent.objects.filter(mois=mois, annee=annee)
+        
+        stats = {
+            'mois': mois,
+            'annee': annee,
+            'total_salaires_bruts': salaires.aggregate(total=Sum('total_brut'))['total'] or 0,
+            'total_bonus_caisses': salaires.aggregate(total=Sum('bonus_caisses'))['total'] or 0,
+            'total_primes_performance': salaires.aggregate(total=Sum('prime_performance'))['total'] or 0,
+            'total_deductions': salaires.aggregate(total=Sum('deductions'))['total'] or 0,
+            'total_net': salaires.aggregate(total=Sum('total_net'))['total'] or 0,
+            'nombre_agents': salaires.count(),
+            'nombre_payes': salaires.filter(statut='PAYE').count(),
+            'nombre_en_attente': salaires.filter(statut='EN_ATTENTE').count()
+        }
+        
+        return Response(stats)
+
+
+class FichePaieViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les fiches de paie des agents"""
+    queryset = FichePaie.objects.all()
+    serializer_class = FichePaieSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filtrer par agent et période si spécifiés"""
+        queryset = super().get_queryset().select_related('salaire', 'salaire__agent')
+        agent_id = self.request.query_params.get('agent_id')
+        mois = self.request.query_params.get('mois')
+        annee = self.request.query_params.get('annee')
+        salaire_id = self.request.query_params.get('salaire')
+        
+        if agent_id:
+            queryset = queryset.filter(salaire__agent_id=agent_id)
+        if mois:
+            queryset = queryset.filter(mois=mois)
+        if annee:
+            queryset = queryset.filter(annee=annee)
+        if salaire_id:
+            queryset = queryset.filter(salaire_id=salaire_id)
+        
+        return queryset.order_by('-annee', '-mois', 'nom_agent')
+    
+    @action(detail=True, methods=['post'], url_path='generer-pdf')
+    def generer_pdf(self, request, pk=None):
+        """Génère le PDF de la fiche de paie"""
+        fiche_paie = self.get_object()
+        
+        try:
+            success = fiche_paie.generer_pdf(request.user)
+            if success:
+                serializer = self.get_serializer(fiche_paie)
+                return Response({
+                    'message': 'PDF généré avec succès',
+                    'fiche_paie': serializer.data,
+                    'fichier_pdf': fiche_paie.fichier_pdf.url if fiche_paie.fichier_pdf else None
+                })
+            else:
+                return Response(
+                    {'error': 'Erreur lors de la génération du PDF'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors de la génération du PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], url_path='generer-mensuelle')
+    def generer_mensuelle(self, request):
+        """Génère les fiches de paie pour tous les agents d'un mois donné"""
+        mois = request.data.get('mois')
+        annee = request.data.get('annee')
+        
+        if not mois or not annee:
+            return Response(
+                {'error': 'Mois et année sont requis'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            mois = int(mois)
+            annee = int(annee)
+        except ValueError:
+            return Response(
+                {'error': 'Mois et année doivent être des nombres'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Récupérer tous les salaires du mois
+        salaires = SalaireAgent.objects.filter(mois=mois, annee=annee)
+        
+        if not salaires.exists():
+            return Response(
+                {'error': f'Aucun salaire trouvé pour {mois}/{annee}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        fiches_generes = []
+        erreurs = []
+        
+        for salaire in salaires:
+            try:
+                # Créer la fiche de paie si elle n'existe pas
+                fiche_paie, created = FichePaie.objects.get_or_create(
+                    salaire=salaire,
+                    defaults={'type_fiche': 'MOIS'}
+                )
+                
+                # Générer le PDF
+                if fiche_paie.generer_pdf(request.user):
+                    fiches_generes.append(fiche_paie.id)
+                else:
+                    erreurs.append(f"Erreur lors de la génération du PDF pour {salaire.agent.nom_complet}")
+                    
+            except Exception as e:
+                erreurs.append(f"Erreur pour {salaire.agent.nom_complet}: {str(e)}")
+        
+        return Response({
+            'message': f'{len(fiches_generes)} fiches de paie générées avec succès',
+            'fiches_generes': fiches_generes,
+            'erreurs': erreurs
+        })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agents_salaires_stats(request):
+    """Statistiques globales des salaires des agents"""
+    try:
+        # Statistiques par mois
+        stats_mensuelles = []
+        current_year = timezone.now().year
+        
+        for mois in range(1, 13):
+            salaires = SalaireAgent.objects.filter(mois=mois, annee=current_year)
+            if salaires.exists():
+                stats_mensuelles.append({
+                    'mois': mois,
+                    'annee': current_year,
+                    'total_brut': salaires.aggregate(total=Sum('total_brut'))['total'] or 0,
+                    'total_net': salaires.aggregate(total=Sum('total_net'))['total'] or 0,
+                    'nombre_agents': salaires.count(),
+                    'nombre_payes': salaires.filter(statut='PAYE').count()
+                })
+        
+        # Top des agents par bonus caisses
+        top_agents_bonus = SalaireAgent.objects.filter(
+            annee=current_year
+        ).select_related('agent').order_by('-bonus_caisses')[:5]
+        
+        top_agents = []
+        for salaire in top_agents_bonus:
+            top_agents.append({
+                'agent': salaire.agent.nom_complet,
+                'matricule': salaire.agent.matricule,
+                'bonus_caisses': salaire.bonus_caisses,
+                'nombre_caisses': salaire.nombre_nouvelles_caisses,
+                'mois': salaire.mois
+            })
+        
+        return Response({
+            'annee_courante': current_year,
+            'stats_mensuelles': stats_mensuelles,
+            'top_agents_bonus': top_agents,
+            'total_agents': Agent.objects.filter(statut='ACTIF').count()
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Erreur lors du calcul des statistiques: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+class ExerciceCaisseViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les exercices de caisse"""
+    queryset = ExerciceCaisse.objects.all()
+    serializer_class = ExerciceCaisseSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['caisse', 'statut', 'date_debut', 'date_fin']
+    search_fields = ['caisse__nom_association', 'caisse__code']
+    ordering_fields = ['date_debut', 'date_creation', 'date_fin']
+    ordering = ['-date_debut']
+    
+    def get_queryset(self):
+        """Filtrer par caisse si spécifiée"""
+        queryset = super().get_queryset().select_related('caisse')
+        caisse_id = self.request.query_params.get('caisse')
+        
+        if caisse_id:
+            queryset = queryset.filter(caisse_id=caisse_id)
+            
+        return queryset

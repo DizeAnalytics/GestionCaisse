@@ -1,0 +1,218 @@
+{% load math_filters %}
+{% extends 'gestion_caisses/rapports/base_rapport.html' %}
+
+{% block title %}Rapport des Transferts - Gestion des Caisses{% endblock %}
+
+{% block rapport_title %}Rapport des Transferts entre Caisses{% endblock %}
+{% block rapport_subtitle %}Historique et analyse des transferts de fonds{% endblock %}
+{% block rapport_type %}Transferts{% endblock %}
+{% block rapport_period %}Toutes périodes{% endblock %}
+
+{% block rapport_content %}
+    <!-- Section Statistiques des Transferts -->
+    <div class="section">
+        <h2 class="section-title">🔄 Statistiques des Transferts</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_transferts }}</div>
+                <div class="stat-label">Total Transferts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ transferts_valides }}</div>
+                <div class="stat-label">Transferts Validés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ montant_total_transferts|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Montant Total</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Détails des Transferts -->
+    <div class="section">
+        <h2 class="section-title">📋 Détails des Transferts</h2>
+        
+        {% if transferts %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Caisse Source</th>
+                        <th>Caisse Destination</th>
+                        <th>Montant (FCFA)</th>
+                        <th>Statut</th>
+                        <th>Utilisateur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transfert in transferts %}
+                    <tr>
+                        <td>{{ transfert.date_transfert|date:"d/m/Y H:i" }}</td>
+                        <td>{{ transfert.get_type_transfert_display }}</td>
+                        <td>{{ transfert.caisse_source.nom_association }}</td>
+                        <td>
+                            {% if transfert.caisse_destination %}
+                                {{ transfert.caisse_destination.nom_association }}
+                            {% else %}
+                                Caisse Générale
+                            {% endif %}
+                        </td>
+                        <td class="text-right">{{ transfert.montant|floatformat:0 }}</td>
+                        <td>
+                            <span class="badge badge-{{ transfert.statut|lower }}">
+                                {{ transfert.get_statut_display }}
+                            </span>
+                        </td>
+                        <td>{{ transfert.utilisateur.get_full_name|default:transfert.utilisateur.username }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucun transfert enregistré pour le moment.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Type -->
+    <div class="section">
+        <h2 class="section-title">📊 Statistiques par Type de Transfert</h2>
+        
+        {% if stats_par_type %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type de Transfert</th>
+                        <th>Nombre</th>
+                        <th>Montant Total (FCFA)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_type %}
+                    <tr>
+                        <td>{{ stat.type_transfert }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-right">{{ stat.montant_total|floatformat:0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Statut -->
+    <div class="section">
+        <h2 class="section-title">📈 Statistiques par Statut</h2>
+        
+        {% if stats_par_statut %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Statut</th>
+                        <th>Nombre</th>
+                        <th>Montant Total (FCFA)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_statut %}
+                    <tr>
+                        <td>{{ stat.statut }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-right">{{ stat.montant_total|floatformat:0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Caisse Source -->
+    <div class="section">
+        <h2 class="section-title">🏦 Statistiques par Caisse Source</h2>
+        
+        {% if stats_par_caisse_source %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Caisse Source</th>
+                        <th>Nombre de Transferts</th>
+                        <th>Montant Total (FCFA)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_caisse_source %}
+                    <tr>
+                        <td>{{ stat.caisse_source__nom_association }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-right">{{ stat.montant_total|floatformat:0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Résumé et Recommandations -->
+    <div class="section">
+        <h2 class="section-title">📋 Résumé et Recommandations</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">Points Clés des Transferts</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Total des transferts :</strong> {{ total_transferts }} transferts effectués</li>
+                <li><strong>Transferts validés :</strong> {{ transferts_valides }} ({{ transferts_valides|floatformat:0|add:0|div:total_transferts|mul:100|floatformat:1 }}% du total)</li>
+                <li><strong>Montant total :</strong> {{ montant_total_transferts|floatformat:0 }} FCFA transférés</li>
+                {% if total_transferts > 0 %}
+                <li><strong>Taux de validation :</strong> 
+                    <span id="taux-validation">0</span>% des transferts sont validés
+                </li>
+                {% endif %}
+            </ul>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Recommandations</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                {% if total_transferts > 0 %}
+                <li>🔄 <strong>Suivi des transferts :</strong> Maintenir la traçabilité des {{ total_transferts }} transferts effectués</li>
+                {% endif %}
+                
+                {% if montant_total_transferts > 0 %}
+                <li>💰 <strong>Gestion des montants :</strong> Surveiller les {{ montant_total_transferts|floatformat:0 }} FCFA transférés</li>
+                {% endif %}
+                
+                {% if transferts_valides < total_transferts %}
+                <li>⚠️ <strong>Transferts en attente :</strong> {{ total_transferts|add:"-"|add:transferts_valides }} transferts nécessitent une validation</li>
+                {% endif %}
+                
+                <li>📊 <strong>Rapports réguliers :</strong> Générer ce rapport périodiquement pour le suivi</li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Calculer le taux de validation
+    document.addEventListener('DOMContentLoaded', function() {
+        const transfertsValides = {{ transferts_valides }};
+        const totalTransferts = {{ total_transferts }};
+        
+        if (totalTransferts > 0) {
+            const taux = (transfertsValides / totalTransferts * 100).toFixed(1);
+            document.getElementById('taux-validation').textContent = taux;
+        }
+    });
+</script>
+{% endblock %}

@@ -3,8 +3,39 @@
 
 {% block title %}Tableau de Bord Admin — Rapports{% endblock %}
 
+{% block extra_css %}
+<style>
+    .admin-nav {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .admin-nav .btn {
+        margin-right: 10px;
+        margin-bottom: 5px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container p-4">
+    <!-- Navigation admin -->
+    <div class="admin-nav">
+        <h4 class="mb-3">
+            <i class="fa fa-tools me-2"></i>Administration
+        </h4>
+        <a href="/gestion-caisses/caisses-cards/" class="btn btn-primary">
+            <i class="fa fa-building me-1"></i>Voir les Caisses
+        </a>
+        <a href="/adminsecurelogin/" class="btn btn-secondary">
+            <i class="fa fa-cog me-1"></i>Admin Django
+        </a>
+        <a href="/gestion-caisses/dashboard/" class="btn btn-info">
+            <i class="fa fa-chart-line me-1"></i>Dashboard
+        </a>
+    </div>
+    
     <div class="row g-3">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -182,7 +213,7 @@
         addCard(wrap, 'Fond initial', f(fonds.fond_initial || 0) + ' FCFA', 'fa-piggy-bank');
         addCard(wrap, 'Fond disponible', f(fonds.fond_disponible || 0) + ' FCFA', 'fa-sack-dollar');
         addCard(wrap, 'Montant total prêts', f(fonds.montant_total_prets || 0) + ' FCFA', 'fa-file-invoice-dollar');
-        addCard(wrap, 'Solde disponible', f(fonds.solde_disponible || 0) + ' FCFA', 'fa-scale-balanced');
+        addCard(wrap, 'Solde disponible', f(((fonds.fond_initial||0) + (fonds.fond_disponible||0))) + ' FCFA', 'fa-scale-balanced');
 
         const stats = (data.mouvements && data.mouvements.stats_par_type) || [];
         const labels = stats.map(s => s.type_mouvement || s.type || '');
@@ -204,7 +235,7 @@
                     <td class="text-end">${f(c.fond_initial || 0)}</td>
                     <td class="text-end">${f(c.fond_disponible || 0)}</td>
                     <td class="text-end">${f(c.montant_total_prets || 0)}</td>
-                    <td class="text-end">${f(c.solde_disponible || 0)}</td>
+                    <td class="text-end">${f((c.fond_initial || 0) + (c.fond_disponible || 0))}</td>
                 </tr>
             `).join('');
         }
@@ -367,7 +398,11 @@
         if (d1) params.append('date_debut', d1);
         if (d2) params.append('date_fin', d2);
         if (caisseId) params.append('caisse_id', caisseId);
-        window.location.href = `/gestion-caisses/api/rapport-pdf/?${params}`;
+        const href = `/gestion-caisses/api/rapport-pdf/?${params}`;
+        // Ouvrir le PDF et rafraîchir l'app après le clic
+        const win = window.open(href, '_blank');
+        // Rafraîchir rapidement l'UI (sans attendre la fin du téléchargement)
+        setTimeout(() => { try { window.location.reload(); } catch(_) {} }, 500);
     });
 
     // Charger la liste des caisses

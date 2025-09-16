@@ -263,6 +263,8 @@
           <div class="mb-3">
             <label class="form-label required">Membre</label>
             <select class="form-select" name="membre_id" id="pretMembre" required></select>
+            <div id="membreContributionWarning" class="alert alert-warning mt-2" style="display:none; font-size:12px;"></div>
+            <div id="membreContributionInfo" class="text-muted mt-1" style="display:none; font-size: 12px;"></div>
           </div>
           <div class="row g-3">
             <div class="col-md-6">
@@ -344,6 +346,18 @@ async function submitPret(){
             document.getElementById('pretError').style.display = 'block';
             return;
         }
+        
+        // Validation préventive : vérifier si le membre a déjà un prêt en cours
+        const membreId = document.getElementById('membre_id').value;
+        if (membreId) {
+            const hasActiveLoan = await checkMemberActiveLoan(membreId);
+            if (hasActiveLoan) {
+                document.getElementById('pretError').textContent = 'Ce membre a déjà un prêt en cours. Impossible de soumettre un nouveau prêt.';
+                document.getElementById('pretError').style.display = 'block';
+                return;
+            }
+        }
+        
         const form = document.getElementById('pretForm');
         const payload = Object.fromEntries(new FormData(form).entries());
         payload['caisse_id'] = USER_CAISE_ID;
@@ -352,16 +366,67 @@ async function submitPret(){
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() },
             body: JSON.stringify(payload)
         });
+        
         if (!res.ok){
             const err = await res.json().catch(()=>({}));
-            throw new Error(err?.detail || err?.message || 'Erreur de création');
+            let errorMessage = 'Erreur de création';
+            
+            // Gestion spécifique des erreurs de validation
+            if (err.membre) {
+                errorMessage = err.membre[0] || err.membre;
+            } else if (err.detail) {
+                errorMessage = err.detail;
+            } else if (err.message) {
+                errorMessage = err.message;
+            } else if (typeof err === 'string') {
+                errorMessage = err;
+            }
+            
+            throw new Error(errorMessage);
         }
+        
         closePretModal();
         loadPrets();
+        // Afficher un message de succès
+        showSuccessMessage('Prêt soumis avec succès !');
     } catch(e){
         document.getElementById('pretError').textContent = e.message;
         document.getElementById('pretError').style.display = 'block';
     }
+}
+
+// Fonction pour vérifier si un membre a un prêt en cours
+async function checkMemberActiveLoan(membreId) {
+    try {
+        const response = await fetch(`/gestion-caisses/api/prets/check_member_loan/?membre_id=${membreId}`, {
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            return data.has_active_loan;
+        }
+        return false;
+    } catch (error) {
+        console.error('Erreur lors de la vérification des prêts actifs:', error);
+        return false;
+    }
+}
+
+// Fonction pour afficher un message de succès
+function showSuccessMessage(message) {
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success';
+    successDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    successDiv.textContent = message;
+    document.body.appendChild(successDiv);
+    
+    setTimeout(() => {
+        successDiv.remove();
+    }, 3000);
 }
 
 function loadCaisses() {
@@ -548,7 +613,6 @@ function displayPrets(prets) {
                 <div class="pret-actions">
                     <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/change/" class="action-btn btn-view">Voir</a>
                     <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/change/" class="action-btn btn-edit">Modifier</a>
-                    <a href="/adminsecurelogin/gestion_caisses/pret/${pret.id}/delete/" class="action-btn btn-delete">Supprimer</a>
                 </div>
             </div>
         `;
@@ -561,39 +625,165 @@ function getCSRFToken() {
     return window.csrfToken || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
 }
 
-function loadMembresForModal() {
-    let url = '/api/membres/';
-    const params = new URLSearchParams();
-    
-    // Si l'utilisateur a une caisse spécifique, filtrer par cette caisse
-    if (USER_CAISE_ID) {
-        params.append('caisse', USER_CAISE_ID);
-    }
-    
-    if (params.toString()) {
-        url += '?' + params.toString();
-    }
-    
-    fetch(url, {
-        headers: {
-            'X-CSRFToken': getCSRFToken(),
-            'Content-Type': 'application/json'
+async function loadMembresForModal() {
+    try {
+        let url = '/api/membres/';
+        const params = new URLSearchParams();
+        
+        // Si l'utilisateur a une caisse spécifique, filtrer par cette caisse
+        if (USER_CAISE_ID) {
+            params.append('caisse', USER_CAISE_ID);
         }
-    })
-    .then(response => response.json())
-    .then(data => {
+        
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+        
+        const response = await fetch(url, {
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
         const select = document.getElementById('pretMembre');
         select.innerHTML = '<option value="">Sélectionner un membre</option>';
         const membres = data.results || data;
+        
+        // Charger les prêts actifs pour tous les membres
+        const activeLoansResponse = await fetch('/gestion-caisses/api/prets/?statut=EN_ATTENTE,EN_ATTENTE_ADMIN,VALIDE,EN_COURS,EN_RETARD,BLOQUE', {
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        let activeLoans = [];
+        if (activeLoansResponse.ok) {
+            const loansData = await activeLoansResponse.json();
+            activeLoans = loansData.results || [];
+        }
+        
+        // Créer un set des IDs de membres avec des prêts actifs
+        const membresAvecPretActif = new Set(activeLoans.map(pret => pret.membre_id || pret.membre));
         
         membres.forEach(membre => {
             const option = document.createElement('option');
             option.value = membre.id;
             option.textContent = membre.nom_complet;
+            
+            // Désactiver les membres qui ont déjà un prêt en cours
+            if (membresAvecPretActif.has(membre.id)) {
+                option.disabled = true;
+                option.textContent += ' (Prêt en cours)';
+                option.style.color = '#999';
+            }
+            
             select.appendChild(option);
         });
-    })
-    .catch(error => console.error('Erreur lors du chargement des membres pour le modal:', error));
+        
+        // Ajouter un message d'information
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'alert alert-info mt-2';
+        infoDiv.style.fontSize = '12px';
+        infoDiv.innerHTML = '<strong>Note :</strong> Les membres avec un prêt en cours sont désactivés dans la liste.';
+        select.parentNode.appendChild(infoDiv);
+        
+        // Ajouter un event listener pour la validation en temps réel
+        select.addEventListener('change', async function() {
+            const selectedMembreId = this.value;
+            if (selectedMembreId) {
+                const hasActiveLoan = await checkMemberActiveLoan(selectedMembreId);
+                if (hasActiveLoan) {
+                    // Afficher un avertissement
+                    const warningDiv = document.getElementById('membreWarning') || document.createElement('div');
+                    warningDiv.id = 'membreWarning';
+                    warningDiv.className = 'alert alert-warning mt-2';
+                    warningDiv.style.fontSize = '12px';
+                    warningDiv.innerHTML = '<strong>Attention :</strong> Ce membre a déjà un prêt en cours. Impossible de soumettre un nouveau prêt.';
+                    
+                    if (!document.getElementById('membreWarning')) {
+                        this.parentNode.appendChild(warningDiv);
+                    }
+                    
+                    // Désactiver le bouton de soumission
+                    const submitBtn = document.querySelector('button[onclick="submitPret()"]');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Soumission impossible - Prêt en cours';
+                    }
+                } else {
+                    // Supprimer l'avertissement prêt actif s'il existe
+                    const warningDiv = document.getElementById('membreWarning');
+                    if (warningDiv) {
+                        warningDiv.remove();
+                    }
+                    // Vérifier les cotisations cumulées du membre via endpoint dédié
+                    let totalCotisations = 0;
+                    try {
+                        const res = await fetch(`/gestion-caisses/api/membres/${selectedMembreId}/cotisations-total/`, {
+                            headers: { 'X-CSRFToken': getCSRFToken() }
+                        });
+                        if (res.ok) {
+                            const js = await res.json();
+                            totalCotisations = parseFloat(js.total_cotisations) || 0;
+                        }
+                    } catch (e) {
+                        // ne pas bloquer côté frontend; backend fera la validation
+                    }
+                    const contribWarning = document.getElementById('membreContributionWarning');
+                    const contribInfo = document.getElementById('membreContributionInfo');
+                    const submitBtn = document.querySelector('button[onclick="submitPret()"]');
+                    if (totalCotisations < 3000) {
+                        if (contribWarning) {
+                            contribWarning.style.display = 'block';
+                            contribWarning.innerHTML = `<i class='fas fa-exclamation-triangle'></i> Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA. Minimum requis: 3000 FCFA.`;
+                        }
+                        if (contribInfo) {
+                            contribInfo.style.display = 'block';
+                            contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+                        }
+                        if (submitBtn) {
+                            submitBtn.disabled = true;
+                            submitBtn.textContent = 'Soumission impossible - Cotisations < 3000 FCFA';
+                        }
+                    } else {
+                        if (contribWarning) contribWarning.style.display = 'none';
+                        if (contribInfo) {
+                            contribInfo.style.display = 'block';
+                            contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+                        }
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = 'Enregistrer';
+                        }
+                    }
+                    
+                }
+            } else {
+                // Supprimer l'avertissement s'il existe
+                const warningDiv = document.getElementById('membreWarning');
+                if (warningDiv) {
+                    warningDiv.remove();
+                }
+                const contribWarning = document.getElementById('membreContributionWarning');
+                if (contribWarning) contribWarning.style.display = 'none';
+                const contribInfo = document.getElementById('membreContributionInfo');
+                if (contribInfo) contribInfo.style.display = 'none';
+                
+                // Réactiver le bouton de soumission
+                const submitBtn = document.querySelector('button[onclick="submitPret()"]');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Enregistrer';
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Erreur lors du chargement des membres pour le modal:', error);
+    }
 }
 </script>
 {% endblock %}

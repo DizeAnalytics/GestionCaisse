@@ -1,0 +1,259 @@
+{% extends 'gestion_caisses/rapports/base_rapport.html' %}
+
+{% block title %}Rapport des Prêts - Gestion des Caisses{% endblock %}
+
+{% block rapport_title %}Rapport des Prêts{% endblock %}
+{% block rapport_subtitle %}Analyse détaillée des prêts et remboursements{% endblock %}
+{% block rapport_type %}Prêts{% endblock %}
+{% block rapport_period %}Toutes périodes{% endblock %}
+
+{% block rapport_content %}
+    <!-- Section Statistiques Générales -->
+    <div class="section">
+        <h2 class="section-title">📊 Statistiques Générales</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ prets.count }}</div>
+                <div class="stat-label">Total Prêts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ prets|length }}</div>
+                <div class="stat-label">Prêts Analysés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ prets_en_retard.count }}</div>
+                <div class="stat-label">Prêts en Retard</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ date_generation|date:"d/m/Y" }}</div>
+                <div class="stat-label">Date de Génération</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Statistiques par Statut -->
+    <div class="section">
+        <h2 class="section-title">📈 Statistiques par Statut</h2>
+        
+        {% if stats_par_statut %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Statut</th>
+                        <th>Nombre</th>
+                        <th>Montant Total</th>
+                        <th>Montant Remboursé</th>
+                        <th>Taux de Remboursement</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_statut %}
+                    <tr>
+                        <td>
+                            <span class="badge badge-{{ stat.statut|lower }}">
+                                {{ stat.statut }}
+                            </span>
+                        </td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-right">{{ stat.montant_total|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-right">{{ stat.montant_rembourse|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-center">
+                            {% if stat.montant_total and stat.montant_total > 0 %}
+                                <span class="taux-remboursement" data-total="{{ stat.montant_total }}" data-rembourse="{{ stat.montant_rembourse|default:0 }}">0</span>%
+                            {% else %}
+                                0%
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucune statistique par statut disponible.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Caisse -->
+    <div class="section">
+        <h2 class="section-title">🏦 Statistiques par Caisse</h2>
+        
+        {% if stats_par_caisse %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Caisse</th>
+                        <th>Nombre de Prêts</th>
+                        <th>Montant Total</th>
+                        <th>Montant Remboursé</th>
+                        <th>Taux de Remboursement</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_caisse %}
+                    <tr>
+                        <td>{{ stat.caisse__nom_association|default:"Caisse inconnue" }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-right">{{ stat.montant_total|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-right">{{ stat.montant_rembourse|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-center">
+                            {% if stat.montant_total and stat.montant_total > 0 %}
+                                <span class="taux-remboursement" data-total="{{ stat.montant_total }}" data-rembourse="{{ stat.montant_rembourse|default:0 }}">0</span>%
+                            {% else %}
+                                0%
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucune statistique par caisse disponible.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Prêts en Retard -->
+    <div class="section">
+        <h2 class="section-title">⚠️ Prêts en Retard</h2>
+        
+        {% if prets_en_retard %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Membre</th>
+                        <th>Caisse</th>
+                        <th>Montant</th>
+                        <th>Date de Demande</th>
+                        <th>Jours de Retard</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pret in prets_en_retard %}
+                    <tr>
+                        <td>{{ pret.membre.nom }} {{ pret.membre.prenoms }}</td>
+                        <td>{{ pret.caisse.nom_association }}</td>
+                        <td class="text-right">{{ pret.montant_accord|floatformat:0 }} FCFA</td>
+                        <td>{{ pret.date_demande|date:"d/m/Y" }}</td>
+                        <td class="text-center">
+                            <span class="jours-retard" data-date="{{ pret.date_demande|date:'Y-m-d' }}">0</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-success">
+            <p>✅ Aucun prêt en retard détecté.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Détail des Prêts -->
+    <div class="section">
+        <h2 class="section-title">📋 Détail des Prêts</h2>
+        
+        {% if prets %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Membre</th>
+                        <th>Caisse</th>
+                        <th>Montant</th>
+                        <th>Remboursé</th>
+                        <th>Restant</th>
+                        <th>Statut</th>
+                        <th>Échéances</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pret in prets %}
+                    <tr>
+                        <td>{{ pret.membre.nom }} {{ pret.membre.prenoms }}</td>
+                        <td>{{ pret.caisse.nom_association }}</td>
+                        <td class="text-right">{{ pret.montant_accord|floatformat:0 }} FCFA</td>
+                        <td class="text-right">{{ pret.montant_rembourse|floatformat:0 }} FCFA</td>
+                        <td class="text-right">{{ pret.montant_restant|floatformat:0 }} FCFA</td>
+                        <td>
+                            <span class="badge badge-{{ pret.statut|lower }}">
+                                {{ pret.statut }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            {{ pret.echeances_payees }}/{{ pret.total_echeances }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucun prêt disponible pour l'analyse.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Analyse et Recommandations -->
+    <div class="section">
+        <h2 class="section-title">💡 Analyse et Recommandations</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">Points Clés de l'Analyse</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Total des prêts :</strong> {{ prets.count }} prêts accordés</li>
+                <li><strong>Prêts en cours :</strong> {{ prets|length }} prêts actifs</li>
+                <li><strong>Prêts en retard :</strong> {{ prets_en_retard.count }} prêts nécessitent une attention</li>
+                <li><strong>Période d'analyse :</strong> Derniers 30 jours</li>
+            </ul>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Recommandations</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>📊 <strong>Suivi des retards :</strong> Contacter les membres avec des prêts en retard</li>
+                <li>💰 <strong>Gestion des échéances :</strong> Vérifier le respect des calendriers de remboursement</li>
+                <li>📈 <strong>Performance des caisses :</strong> Analyser les taux de remboursement par caisse</li>
+                <li>🔍 <strong>Audit régulier :</strong> Générer ce rapport mensuellement</li>
+                <li>📋 <strong>Documentation :</strong> Maintenir les dossiers des prêts à jour</li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Calculer les taux de remboursement
+    document.addEventListener('DOMContentLoaded', function() {
+        // Taux de remboursement par statut et par caisse
+        document.querySelectorAll('.taux-remboursement').forEach(function(element) {
+            const total = parseFloat(element.dataset.total);
+            const rembourse = parseFloat(element.dataset.rembourse);
+            
+            if (total > 0) {
+                const taux = (rembourse / total * 100).toFixed(1);
+                element.textContent = taux;
+            }
+        });
+        
+        // Calculer les jours de retard
+        document.querySelectorAll('.jours-retard').forEach(function(element) {
+            const datePret = new Date(element.dataset.date);
+            const aujourdhui = new Date();
+            const diffTime = Math.abs(aujourdhui - datePret);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            element.textContent = diffDays;
+        });
+    });
+</script>
+{% endblock %}

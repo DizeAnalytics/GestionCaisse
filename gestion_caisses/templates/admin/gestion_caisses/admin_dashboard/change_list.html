@@ -1,0 +1,750 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block content_title %}
+    <h1>🏛️ Dashboard d'Administration - Gestion des Caisses de Femmes</h1>
+{% endblock %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .admin-dashboard {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+        transition: transform 0.2s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .stat-card h3 {
+        margin: 0 0 12px 0;
+        color: #333;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+    }
+    
+    .stat-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .stat-icon {
+        font-size: 24px;
+        opacity: 0.8;
+    }
+    
+    .actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .action-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border: 1px solid #e9ecef;
+    }
+    
+    .action-card h3 {
+        margin: 0 0 16px 0;
+        color: #333;
+        font-size: 18px;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 8px;
+    }
+    
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .action-btn {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        color: #495057;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+    
+    .action-btn:hover {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+        transform: translateX(4px);
+    }
+    
+    .action-btn.primary {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .action-btn.primary:hover {
+        background: #0056b3;
+        border-color: #0056b3;
+    }
+    
+    .action-btn.success {
+        background: #28a745;
+        color: white;
+        border-color: #28a745;
+    }
+    
+    .action-btn.success:hover {
+        background: #1e7e34;
+        border-color: #1e7e34;
+    }
+    
+    .action-btn.warning {
+        background: #ffc107;
+        color: #212529;
+        border-color: #ffc107;
+    }
+    
+    .action-btn.warning:hover {
+        background: #e0a800;
+        border-color: #e0a800;
+    }
+    
+    .action-btn.danger {
+        background: #dc3545;
+        color: white;
+        border-color: #dc3545;
+    }
+    
+    .action-btn.danger:hover {
+        background: #c82333;
+        border-color: #c82333;
+    }
+    
+    .quick-actions {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+    }
+    
+    .quick-actions h3 {
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 20px;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 12px;
+    }
+    
+    .quick-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .quick-btn {
+        padding: 10px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .quick-btn:hover {
+        background: #5a6268;
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    .quick-btn.primary { background: #007bff; }
+    .quick-btn.primary:hover { background: #0056b3; }
+    
+    .quick-btn.success { background: #28a745; }
+    .quick-btn.success:hover { background: #1e7e34; }
+    
+    .quick-btn.warning { background: #ffc107; color: #212529; }
+    .quick-btn.warning:hover { background: #e0a800; }
+    
+    .quick-btn.info { background: #17a2b8; }
+    .quick-btn.info:hover { background: #138496; }
+    
+    .quick-btn.dark { background: #343a40; }
+    .quick-btn.dark:hover { background: #23272b; }
+    
+    .reports-section {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .reports-section h3 {
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 20px;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 12px;
+    }
+    
+    .report-filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .filter-group label {
+        font-weight: 600;
+        color: #495057;
+        font-size: 14px;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        padding: 8px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    
+    .filter-group select:focus,
+    .filter-group input:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+    }
+    
+    .report-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .report-btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+    
+    .report-btn.primary {
+        background: #007bff;
+        color: white;
+    }
+    
+    .report-btn.primary:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+    }
+    
+    .report-btn.success {
+        background: #28a745;
+        color: white;
+    }
+    
+    .report-btn.success:hover {
+        background: #1e7e34;
+        transform: translateY(-1px);
+    }
+    
+    .report-btn.warning {
+        background: #ffc107;
+        color: #212529;
+    }
+    
+    .report-btn.warning:hover {
+        background: #e0a800;
+        transform: translateY(-1px);
+    }
+    
+    .report-btn.info {
+        background: #17a2b8;
+        color: white;
+    }
+    
+    .report-btn.info:hover {
+        background: #138496;
+        transform: translateY(-1px);
+    }
+    
+    @media (max-width: 768px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .actions-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .report-filters {
+            grid-template-columns: 1fr;
+        }
+        
+        .quick-buttons {
+            justify-content: center;
+        }
+        
+        .report-actions {
+            justify-content: center;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="admin-dashboard">
+        <!-- Statistiques principales -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>💰 Fonds Totaux Disponibles</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">💵</span>
+                    {{ total_fonds_disponibles|floatformat:0 }} FCFA
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>🏦 Nombre de Caisses</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">🏛️</span>
+                    {{ total_caisses }}
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>👥 Total Membres</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">👤</span>
+                    {{ total_membres }}
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>📊 Prêts Actifs</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">📈</span>
+                    {{ prets_actifs }}
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>💳 Montant Total Prêts</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">💳</span>
+                    {{ total_montant_prets|floatformat:0 }} FCFA
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>🔄 Montant Remboursé</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">✅</span>
+                    {{ total_montant_rembourse|floatformat:0 }} FCFA
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>🏛️ Caisse Générale - Réserve</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">🏦</span>
+                    {{ caisse_generale_reserve|floatformat:0 }} FCFA
+                </p>
+            </div>
+            
+            <div class="stat-card">
+                <h3>📊 Caisse Générale - Total Système</h3>
+                <p class="stat-value">
+                    <span class="stat-icon">📈</span>
+                    {{ caisse_generale_systeme|floatformat:0 }} FCFA
+                </p>
+            </div>
+        </div>
+
+        <!-- Actions rapides -->
+        <div class="quick-actions">
+            <h3>⚡ Actions Rapides</h3>
+            <div class="quick-buttons">
+                <a href="/adminsecurelogin/gestion_caisses/pret/" class="quick-btn primary">📄 Gérer les Prêts</a>
+                <a href="/adminsecurelogin/gestion_caisses/caisse/" class="quick-btn success">🏦 Gérer les Caisses</a>
+                <a href="/adminsecurelogin/gestion_caisses/membre/" class="quick-btn warning">👥 Gérer les Membres</a>
+                <a href="/adminsecurelogin/gestion_caisses/transfertcaisse/" class="quick-btn info">🔄 Transferts entre Caisses</a>
+                <a href="/adminsecurelogin/gestion_caisses/caissegenerale/" class="quick-btn dark">🏛️ Caisse Générale</a>
+                <a href="/adminsecurelogin/gestion_caisses/notification/" class="quick-btn primary">🔔 Notifications</a>
+            </div>
+        </div>
+
+        <!-- Actions principales -->
+        <div class="actions-grid">
+            <!-- Rapports et États -->
+            <div class="action-card">
+                <h3>📊 Rapports et États</h3>
+                <div class="action-buttons">
+                    <a href="#" class="action-btn primary" onclick="genererRapportGeneral()">
+                        📈 Rapport Général du Système
+                    </a>
+                    <a href="#" class="action-btn success" onclick="genererRapportFinancier()">
+                        💰 Rapport Financier Complet
+                    </a>
+                    <a href="#" class="action-btn warning" onclick="genererRapportPrets()">
+                        💳 Rapport des Prêts
+                    </a>
+                    <a href="#" class="action-btn info" onclick="genererRapportMembres()">
+                        👥 Rapport des Membres
+                    </a>
+                    <a href="#" class="action-btn dark" onclick="genererRapportTransferts()">
+                        🔄 Rapport des Transferts
+                    </a>
+                </div>
+            </div>
+
+            <!-- Impressions -->
+            <div class="action-card">
+                <h3>🖨️ Impressions</h3>
+                <div class="action-buttons">
+                    <a href="#" class="action-btn primary" onclick="imprimerEtatGeneral()">
+                        🖨️ État Général du Système
+                    </a>
+                    <a href="#" class="action-btn success" onclick="imprimerEtatFinancier()">
+                        🖨️ État Financier
+                    </a>
+                    <a href="#" class="action-btn warning" onclick="imprimerEtatPrets()">
+                        🖨️ État des Prêts
+                    </a>
+                    <a href="#" class="action-btn info" onclick="imprimerEtatCaisses()">
+                        🖨️ État des Caisses
+                    </a>
+                    <a href="#" class="action-btn dark" onclick="imprimerEtatTransferts()">
+                        🖨️ État des Transferts
+                    </a>
+                </div>
+            </div>
+
+            <!-- Gestion des fonds -->
+            <div class="action-card">
+                <h3>💵 Gestion des Fonds</h3>
+                <div class="action-buttons">
+                    <a href="#" class="action-btn primary" onclick="voirCaisseGenerale()">
+                        🏛️ Voir Caisse Générale
+                    </a>
+                    <a href="#" class="action-btn success" onclick="gererTransferts()">
+                        🔄 Gérer les Transferts
+                    </a>
+                    <a href="#" class="action-btn warning" onclick="voirMouvementsFonds()">
+                        📊 Mouvements de Fonds
+                    </a>
+                    <a href="#" class="action-btn info" onclick="voirVirementsBancaires()">
+                        🏦 Virements Bancaires
+                    </a>
+                    <a href="#" class="action-btn dark" onclick="voirAuditLogs()">
+                        📝 Logs d'Audit
+                    </a>
+                </div>
+            </div>
+
+            <!-- Maintenance -->
+            <div class="action-card">
+                <h3>🔧 Maintenance</h3>
+                <div class="action-buttons">
+                    <a href="#" class="action-btn primary" onclick="synchroniserSysteme()">
+                        🔄 Synchroniser le Système
+                    </a>
+                    <a href="#" class="action-btn success" onclick="verifierIntegrite()">
+                        ✅ Vérifier l'Intégrité
+                    </a>
+                    <a href="#" class="action-btn warning" onclick="nettoyerDonnees()">
+                        🧹 Nettoyer les Données
+                    </a>
+                    <a href="#" class="action-btn info" onclick="sauvegarderSysteme()">
+                        💾 Sauvegarder le Système
+                    </a>
+                    <a href="#" class="action-btn dark" onclick="voirParametres()">
+                        ⚙️ Paramètres du Système
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section Rapports avec Filtres -->
+        <div class="reports-section">
+            <h3>📋 Génération de Rapports Personnalisés</h3>
+            
+            <div class="report-filters">
+                <div class="filter-group">
+                    <label for="typeRapport">Type de Rapport</label>
+                    <select id="typeRapport" class="form-select">
+                        <option value="general">Général</option>
+                        <option value="financier">Financier</option>
+                        <option value="prets">Prêts</option>
+                        <option value="membres">Membres</option>
+                        <option value="caisses">Caisses</option>
+                        <option value="transferts">Transferts</option>
+                        <option value="audit">Audit</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="caisseSelect">Caisse (optionnel)</label>
+                    <select id="caisseSelect" class="form-select">
+                        <option value="">Toutes les Caisses</option>
+                        {% for caisse in caisses %}
+                        <option value="{{ caisse.id }}">{{ caisse.nom_association }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="dateDebut">Date de Début</label>
+                    <input type="date" id="dateDebut" class="form-control">
+                </div>
+                
+                <div class="filter-group">
+                    <label for="dateFin">Date de Fin</label>
+                    <input type="date" id="dateFin" class="form-control">
+                </div>
+                
+                <div class="filter-group">
+                    <label for="formatRapport">Format</label>
+                    <select id="formatRapport" class="form-select">
+                        <option value="pdf">PDF</option>
+                        <option value="excel">Excel</option>
+                        <option value="csv">CSV</option>
+                        <option value="html">HTML</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="report-actions">
+                <button type="button" class="report-btn primary" onclick="genererRapportPersonnalise()">
+                    📊 Générer le Rapport
+                </button>
+                <button type="button" class="report-btn success" onclick="previsualiserRapport()">
+                    👁️ Prévisualiser
+                </button>
+                <button type="button" class="report-btn warning" onclick="exporterDonnees()">
+                    📥 Exporter les Données
+                </button>
+                <button type="button" class="report-btn info" onclick="planifierRapport()">
+                    ⏰ Planifier
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour les rapports -->
+    <div id="rapportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>📊 Rapport en Cours de Génération</h2>
+            <div id="rapportContent">
+                <p>Génération du rapport en cours...</p>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fonctions pour les actions rapides
+        function genererRapportGeneral() {
+            window.open('/gestion-caisses/admin/rapport-general/?format=pdf', '_blank');
+        }
+        
+        function genererRapportFinancier() {
+            window.open('/gestion-caisses/admin/rapport-financier/?format=pdf', '_blank');
+        }
+        
+        function genererRapportPrets() {
+            window.open('/gestion-caisses/admin/rapport-prets/?format=pdf', '_blank');
+        }
+        
+        function genererRapportMembres() {
+            window.open('/gestion-caisses/admin/rapport-membres/?format=pdf', '_blank');
+        }
+        
+        function genererRapportTransferts() {
+            window.open('/gestion-caisses/admin/rapport-transferts/?format=pdf', '_blank');
+        }
+        
+        // Fonctions pour les impressions
+        function imprimerEtatGeneral() {
+            window.open('/gestion-caisses/admin/etat-general/?format=pdf', '_blank');
+        }
+        
+        function imprimerEtatFinancier() {
+            window.open('/gestion-caisses/admin/etat-financier/?format=pdf', '_blank');
+        }
+        
+        function imprimerEtatPrets() {
+            window.open('/gestion-caisses/admin/etat-prets/?format=pdf', '_blank');
+        }
+        
+        function imprimerEtatCaisses() {
+            window.open('/gestion-caisses/admin/etat-caisses/?format=pdf', '_blank');
+        }
+        
+        function imprimerEtatTransferts() {
+            window.open('/gestion-caisses/admin/etat-transferts/?format=pdf', '_blank');
+        }
+        
+        // Fonctions pour la gestion des fonds
+        function voirCaisseGenerale() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/caissegenerale/';
+        }
+        
+        function gererTransferts() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/transfertcaisse/';
+        }
+        
+        function voirMouvementsFonds() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/mouvementfond/';
+        }
+        
+        function voirVirementsBancaires() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/virementbancaire/';
+        }
+        
+        function voirAuditLogs() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/auditlog/';
+        }
+        
+        // Fonctions pour la maintenance
+        function synchroniserSysteme() {
+            if (confirm('Voulez-vous synchroniser le système ?')) {
+                window.location.href = '/gestion-caisses/admin/synchroniser-systeme/';
+            }
+        }
+        
+        function verifierIntegrite() {
+            if (confirm('Voulez-vous vérifier l\'intégrité du système ?')) {
+                window.location.href = '/gestion-caisses/admin/verifier-integrite/';
+            }
+        }
+        
+        function nettoyerDonnees() {
+            if (confirm('Voulez-vous nettoyer les données du système ?')) {
+                window.location.href = '/gestion-caisses/admin/nettoyer-donnees/';
+            }
+        }
+        
+        function sauvegarderSysteme() {
+            if (confirm('Voulez-vous sauvegarder le système ?')) {
+                window.location.href = '/gestion-caisses/admin/sauvegarder-systeme/';
+            }
+        }
+        
+        function voirParametres() {
+            window.location.href = '/adminsecurelogin/gestion_caisses/parametre/';
+        }
+        
+        // Fonctions pour les rapports personnalisés
+        function genererRapportPersonnalise() {
+            const typeRapport = document.getElementById('typeRapport').value;
+            const caisse = document.getElementById('caisseSelect').value;
+            const dateDebut = document.getElementById('dateDebut').value;
+            const dateFin = document.getElementById('dateFin').value;
+            const format = document.getElementById('formatRapport').value;
+            
+            // Afficher le modal
+            document.getElementById('rapportModal').style.display = 'block';
+            
+            // Simuler la génération du rapport
+            setTimeout(() => {
+                const url = `/gestion-caisses/admin/rapport-${typeRapport}/?format=${format}&caisse=${caisse}&date_debut=${dateDebut}&date_fin=${dateFin}`;
+                window.open(url, '_blank');
+                document.getElementById('rapportModal').style.display = 'none';
+            }, 2000);
+        }
+        
+        function previsualiserRapport() {
+            alert('Fonctionnalité de prévisualisation en cours de développement');
+        }
+        
+        function exporterDonnees() {
+            alert('Fonctionnalité d\'export en cours de développement');
+        }
+        
+        function planifierRapport() {
+            alert('Fonctionnalité de planification en cours de développement');
+        }
+        
+        // Fermer le modal
+        document.querySelector('.close').onclick = function() {
+            document.getElementById('rapportModal').style.display = 'none';
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('rapportModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+        
+        // Initialiser les dates
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+            
+            document.getElementById('dateFin').value = today.toISOString().split('T')[0];
+            document.getElementById('dateDebut').value = lastMonth.toISOString().split('T')[0];
+        });
+    </script>
+{% endblock %}

@@ -325,14 +325,39 @@
           <div class="row g-3">
             <!-- Informations d'identification -->
             <div class="col-md-6">
+              <label class="form-label">Possède une carte d'électeur</label>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="possede_carte_electeur" id="possede_carte_electeur" checked />
+                <label class="form-check-label" for="possede_carte_electeur">Oui</label>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Carte d'électeur valide</label>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="carte_electeur_valide" id="carte_electeur_valide" />
+                <label class="form-check-label" for="carte_electeur_valide">Valide</label>
+              </div>
+            </div>
+            <div class="col-md-6">
               <label class="form-label">Numéro carte d'électeur <span class="text-danger">*</span></label>
-              <input class="form-control" name="numero_carte_electeur" required />
+              <input class="form-control" name="numero_carte_electeur" maxlength="26" pattern="[A-Z0-9-]{26}" placeholder="Ex: A457-475G-5478U-45-01-01-25-12" required />
+              <small class="form-text text-muted">26 caractères, lettres/chiffres/tirets, en majuscules</small>
             </div>
             <div class="col-md-6">
               <label class="form-label required">Téléphone</label>
-              <input class="form-control" name="numero_telephone" placeholder="+22890123456" />
+              <div class="input-group">
+                <select class="form-select" style="max-width:120px" name="indicatif_telephone">
+                  <option value="+228" selected>+228 (Togo)</option>
+                  <option value="+229">+229 (Bénin)</option>
+                  <option value="+233">+233 (Ghana)</option>
+                </select>
+                <input class="form-control" name="numero_telephone" placeholder="90123456" />
+              </div>
             </div>
-            
+            <div class="col-md-6">
+              <label class="form-label">Numéro WhatsApp</label>
+              <input class="form-control" name="numero_whatsapp" placeholder="90123456" />
+            </div>
             <!-- Informations personnelles -->
             <div class="col-md-6">
               <label class="form-label">Nom <span class="text-danger">*</span></label>
@@ -342,7 +367,6 @@
               <label class="form-label">Prénoms <span class="text-danger">*</span></label>
               <input class="form-control" name="prenoms" required />
             </div>
-            
             <div class="col-md-6">
               <label class="form-label">Date de naissance <span class="text-danger">*</span></label>
               <input type="date" class="form-control" name="date_naissance" required />
@@ -354,12 +378,15 @@
                 <option value="M">Masculin</option>
               </select>
             </div>
-            
             <div class="col-12">
               <label class="form-label">Adresse</label>
               <textarea class="form-control" name="adresse" rows="2" placeholder="Adresse complète du membre"></textarea>
             </div>
-            
+            <!-- Localisation fine -->
+            <div class="col-md-6">
+              <label class="form-label">Quartier</label>
+              <input type="text" class="form-control" name="quartier" id="quartier" placeholder="Nom du quartier (optionnel)" />
+            </div>
             <!-- Photo -->
             <div class="col-md-6">
               <label class="form-label">Photo</label>
@@ -371,7 +398,17 @@
                 <img id="photoPreview" alt="Aperçu de la photo" style="max-height:120px; max-width:100%; border-radius:8px; border: 1px solid #ddd;" />
               </div>
             </div>
-            
+            <!-- Signature -->
+            <div class="col-md-6">
+              <label class="form-label">Signature</label>
+              <input type="file" class="form-control" name="signature" id="signatureInput" accept="image/*" />
+              <small class="form-text text-muted">Formats acceptés: JPG, PNG, GIF (max 5MB)</small>
+            </div>
+            <div class="col-md-6">
+              <div id="signaturePreviewWrapper" style="display:none; text-align:center;">
+                <img id="signaturePreview" alt="Aperçu de la signature" style="max-height:120px; max-width:100%; border-radius:8px; border: 1px solid #ddd;" />
+              </div>
+            </div>
             <!-- Rôle et statut -->
             <div class="col-md-6">
               <label class="form-label">Rôle</label>
@@ -390,6 +427,10 @@
                 <option value="SUSPENDU">Suspendu</option>
                 <option value="RETRAITE">Retraité</option>
               </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <textarea class="form-control" name="notes" rows="3" placeholder="Notes additionnelles sur le membre (optionnel)"></textarea>
             </div>
           </div>
         </form>
@@ -477,6 +518,12 @@ function openMembreModal(){
     
     form.reset();
     document.getElementById('membre_id').value = '';
+    const possede = document.getElementById('possede_carte_electeur');
+    const valide = document.getElementById('carte_electeur_valide');
+    if (possede) possede.checked = true;
+    if (valide) { valide.checked = false; valide.disabled = false; }
+    const indicatif = form.querySelector('select[name="indicatif_telephone"]');
+    if (indicatif) indicatif.value = '+228';
     
     // Vérifier et initialiser les champs
     const sexeSelect = form.querySelector('select[name="sexe"]');
@@ -596,6 +643,10 @@ async function submitMembre(){
     try {
         const form = document.getElementById('membreForm');
         const formData = new FormData(form);
+        const nce = formData.get('numero_carte_electeur');
+        if (nce) formData.set('numero_carte_electeur', String(nce).toUpperCase());
+        formData.set('possede_carte_electeur', document.getElementById('possede_carte_electeur').checked ? 'true' : 'false');
+        formData.set('carte_electeur_valide', document.getElementById('carte_electeur_valide').checked ? 'true' : 'false');
         if (!USER_CAISE_ID){
             document.getElementById('membreError').textContent = 'Aucune caisse liée à votre profil.';
             document.getElementById('membreError').style.display = 'block';
@@ -675,6 +726,7 @@ function loadCommunes() {
     .catch(error => console.error('Erreur lors du chargement des communes:', error));
 }
 
+
 function loadMembres() {
     const caisseFilter = document.getElementById('filter-caisse').value;
     const communeFilter = document.getElementById('filter-commune').value;
@@ -750,6 +802,7 @@ function displayMembres(membres) {
                 <a href="/adminsecurelogin/gestion_caisses/membre/${membre.id}/change/" class="action-btn btn-view">Voir (admin)</a>
                 <button class="action-btn btn-edit" onclick="editMembre(${membre.id})">Modifier</button>
                 <button class="action-btn btn-delete" onclick="deleteMembre(${membre.id})">Supprimer</button>
+                <button class="action-btn btn-view" style="background:#6c757d" onclick="genererPdfCotisationsPourMembre(${membre.id})"><i class="fas fa-file-pdf"></i> PDF Cotisations</button>
             </div>
         </div>
     `).join('');
@@ -761,6 +814,19 @@ function getCSRFToken() {
     return window.csrfToken || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
 }
 
+// Générer PDF cotisations pour un membre depuis la liste
+function genererPdfCotisationsPourMembre(membreId){
+  const dateDebut = '';
+  const dateFin = '';
+  const params = new URLSearchParams();
+  params.append('type', 'cotisations_membre');
+  params.append('membre', membreId);
+  if (dateDebut) params.append('date_debut', dateDebut);
+  if (dateFin) params.append('date_fin', dateFin);
+  params.append('format', 'pdf');
+  window.open(`/gestion-caisses/api/rapports-caisse/?${params.toString()}`, '_blank');
+}
+
 async function editMembre(id){
   try{
     ensureFormFields();
@@ -769,19 +835,43 @@ async function editMembre(id){
     const data = await res.json();
     const form = document.getElementById('membreForm');
     document.getElementById('membre_id').value = data.id;
-    form.numero_carte_electeur.value = data.numero_carte_electeur;
-    form.numero_telephone.value = data.numero_telephone || '';
-    form.nom.value = data.nom;
-    form.prenoms.value = data.prenoms;
-    form.date_naissance.value = data.date_naissance;
+    
+    // Informations d'identification
+    const possedeCarte = document.getElementById('possede_carte_electeur');
+    const carteValide = document.getElementById('carte_electeur_valide');
+    if (possedeCarte) possedeCarte.checked = data.possede_carte_electeur || false;
+    if (carteValide) carteValide.checked = data.carte_electeur_valide || false;
+    
+    form.numero_carte_electeur.value = data.numero_carte_electeur || '';
+    
+    // Informations personnelles
+    form.nom.value = data.nom || '';
+    form.prenoms.value = data.prenoms || '';
+    form.date_naissance.value = data.date_naissance || '';
     form.adresse.value = data.adresse || '';
+    
+    // Gérer le champ sexe
+    const sexeSelect = form.querySelector('select[name="sexe"]');
+    if (sexeSelect) sexeSelect.value = data.sexe || 'F';
+    
+    // Contact
+    const indicatifSelect = form.querySelector('select[name="indicatif_telephone"]');
+    if (indicatifSelect) indicatifSelect.value = data.indicatif_telephone || '+228';
+    
+    form.numero_telephone.value = data.numero_telephone || '';
+    form.numero_whatsapp.value = data.numero_whatsapp || '';
+    
+    // Localisation
+    form.quartier.value = data.quartier || '';
+    
+    // Rôle et statut
     form.role.value = data.role || 'MEMBRE';
     
     const statutSelect = form.querySelector('select[name="statut"]');
     if (statutSelect) statutSelect.value = data.statut || 'ACTIF';
     
-    const sexeSelect = form.querySelector('select[name="sexe"]');
-    if (sexeSelect) sexeSelect.value = data.sexe || 'F';
+    // Notes
+    form.notes.value = data.notes || '';
     
     // Gérer l'affichage de la photo existante
     if (data.photo){
@@ -795,6 +885,20 @@ async function editMembre(id){
       const previewWrapper = document.getElementById('photoPreviewWrapper');
       if (previewWrapper) previewWrapper.style.display = 'none';
     }
+    
+    // Gérer l'affichage de la signature existante
+    if (data.signature){
+      const preview = document.getElementById('signaturePreview');
+      const previewWrapper = document.getElementById('signaturePreviewWrapper');
+      if (preview && previewWrapper){
+        preview.src = data.signature;
+        previewWrapper.style.display = 'block';
+      }
+    } else {
+      const previewWrapper = document.getElementById('signaturePreviewWrapper');
+      if (previewWrapper) previewWrapper.style.display = 'none';
+    }
+    
     const modal = new bootstrap.Modal(document.getElementById('membreModal'));
     document.querySelector('#membreModal .modal-title').textContent = 'Modifier le membre';
     document.getElementById('membreLoading').style.display = 'none';
@@ -826,6 +930,14 @@ async function deleteMembre(id){
 
 // Aperçu de l'image sélectionnée
 document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'possede_carte_electeur'){
+    const checked = e.target.checked;
+    const valide = document.getElementById('carte_electeur_valide');
+    if (valide){
+      valide.disabled = !checked;
+      if (!checked) valide.checked = false;
+    }
+  }
   if (e.target && e.target.id === 'photoInput' && e.target.files && e.target.files[0]){
     const file = e.target.files[0];
     
@@ -847,6 +959,34 @@ document.addEventListener('change', function(e){
     reader.onload = function(evt){
       const preview = document.getElementById('photoPreview');
       const previewWrapper = document.getElementById('photoPreviewWrapper');
+      if (preview && previewWrapper){
+        preview.src = evt.target.result;
+        previewWrapper.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+  if (e.target && e.target.id === 'signatureInput' && e.target.files && e.target.files[0]){
+    const file = e.target.files[0];
+    
+    // Vérifier la taille du fichier (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Le fichier est trop volumineux. Taille maximum autorisée : 5MB');
+      e.target.value = '';
+      return;
+    }
+    
+    // Vérifier le type de fichier
+    if (!file.type.match('image.*')) {
+      alert('Veuillez sélectionner un fichier image valide (JPG, PNG, GIF)');
+      e.target.value = '';
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(evt){
+      const preview = document.getElementById('signaturePreview');
+      const previewWrapper = document.getElementById('signaturePreviewWrapper');
       if (preview && previewWrapper){
         preview.src = evt.target.result;
         previewWrapper.style.display = 'block';

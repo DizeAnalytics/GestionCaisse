@@ -621,14 +621,18 @@ class PretService:
         if montant <= 0:
             raise ValueError("Le montant de remboursement doit être positif")
 
-        # Empêcher de dépasser le reste à payer
-        due = (pret.montant_accord or Decimal('0')) - (pret.montant_rembourse or Decimal('0'))
-        if montant > due:
-            raise ValueError(f"Le montant dépasse le reste à payer ({due} FCFA)")
+        # Empêcher de dépasser le reste à payer (principal + intérêts)
+        # Total dû restant avant paiement = (montant accordé + intérêts) - principal déjà remboursé
+        total_du_restant = (pret.total_a_rembourser or Decimal('0')) - (pret.montant_rembourse or Decimal('0'))
+        paiement_total = montant + interet
+        if paiement_total > total_du_restant:
+            raise ValueError(f"Le montant dépasse le reste à payer ({total_du_restant} FCFA)")
 
         # Créditer la caisse
         solde_avant = pret.caisse.fond_disponible
-        pret.caisse.fond_disponible = solde_avant + montant
+        # Créditer la totalité encaissée (principal + intérêts) dans la caisse
+        pret.caisse.fond_disponible = solde_avant + paiement_total
+        # Conserver l'agrégat 'montant_total_remboursements' sur le principal remboursé uniquement
         pret.caisse.montant_total_remboursements = pret.caisse.montant_total_remboursements + montant
         pret.caisse.save()
 
@@ -637,17 +641,20 @@ class PretService:
         mouvement = MouvementFond.objects.create(
             caisse=pret.caisse,
             type_mouvement='REMBOURSEMENT',
-            montant=montant,
+            # Enregistrer le montant total encaissé pour refléter le flux financier réel
+            montant=paiement_total,
             solde_avant=solde_avant,
             solde_apres=pret.caisse.fond_disponible,
             pret=pret,
             utilisateur=utilisateur,
-            description=f"Remboursement du prêt {pret.numero_pret} (dont intérêt: {interet} FCFA)"
+            description=f"Remboursement du prêt {pret.numero_pret} (principal: {montant} FCFA, intérêt: {interet} FCFA)"
         )
 
         # Mettre à jour le prêt
         pret.montant_rembourse = pret.montant_rembourse + montant
-        if pret.montant_accord and pret.montant_rembourse >= pret.montant_accord:
+        # Si ce paiement solde la dette totale (principal + intérêts), marquer comme remboursé
+        restant_apres = total_du_restant - paiement_total
+        if restant_apres <= 0:
             pret.statut = 'REMBOURSE'
             pret.date_remboursement_complet = timezone.now()
         pret.save()

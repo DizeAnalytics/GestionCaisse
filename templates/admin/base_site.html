@@ -7,17 +7,12 @@
 {{ block.super }}
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="{% static 'jazzmin/overrides.css' %}?v=20250820-1">
+<link rel="manifest" href="{% static 'pwa/manifest.webmanifest' %}">
+<meta name="theme-color" content="#6f42c1">
 {% endblock %}
 
 {% block sidebar %}
 {{ block.super }}
-<div class="p-2" style="margin:8px;">
-  <a class="btn btn-sm btn-outline-light" href="/gestion-caisses/guide-application.pdf" style="width:100%;text-align:left;">
-    📘 Télécharger le Guide de l'application
-  </a>
-  <small class="text-muted" style="display:block;margin-top:4px;">Guide PDF: rôles, parcours prêt, bonnes pratiques</small>
-  <hr/>
-</div>
 {% endblock %}
 
 {% block extrajs %}
@@ -160,8 +155,39 @@ document.addEventListener('DOMContentLoaded', function(){
         }
 
         fetchNotifications();
-        setInterval(fetchNotifications, 30000); // refresh every 30s
+        // Auto-refresh des notifications désactivé
+        // setInterval(fetchNotifications, 30000);
     } catch (e) { /* ignore */ }
 });
+
+// Auto-refresh globale désactivé
+</script>
+<script>
+// PWA: enregistrement du Service Worker et bouton d'installation
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    const swUrl = '/sw.js';
+    navigator.serviceWorker.register(swUrl);
+  });
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = '';
+});
+
+async function installPWA(){
+  try {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    const btn = document.getElementById('pwa-install-btn');
+    if (btn) btn.style.display = 'none';
+  } catch(e) {}
+}
 </script>
 {% endblock %}

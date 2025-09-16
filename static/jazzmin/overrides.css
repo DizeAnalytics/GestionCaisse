@@ -13,6 +13,36 @@
 	background-color: #5a32a3 !important; /* violet foncé */
 }
 
+/* -- Sidebar scrollable indépendamment du contenu -- */
+body.sidebar-mini .main-sidebar,
+.main-sidebar {
+	position: fixed !important;
+	top: 0;
+	bottom: 0;
+	height: 100vh;
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+/* Décaler le contenu principal pour ne pas passer sous la sidebar */
+.content-wrapper, .main-footer, .main-header {
+	margin-left: 250px;
+}
+
+/* Quand la sidebar est réduite (mini), ajuster la marge */
+body.sidebar-mini .content-wrapper,
+body.sidebar-mini .main-footer,
+body.sidebar-mini .main-header {
+	margin-left: 80px;
+}
+
+/* Responsive: overlay sur petits écrans */
+@media (max-width: 991.98px) {
+	.content-wrapper, .main-footer, .main-header {
+		margin-left: 0;
+	}
+}
+
 #jazzy-sidebar .nav-sidebar > .nav-item > .nav-link.active,
 #jazzy-sidebar .nav-sidebar > .nav-item > .nav-link:hover {
 	background-color: #6f42c1 !important;

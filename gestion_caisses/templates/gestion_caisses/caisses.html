@@ -198,8 +198,8 @@ function displayCaisses(caisses) {
         <div class="caisse-card">
             <div class="caisse-header">
                 <span class="caisse-code">${caisse.code}</span>
-                <span style="color: ${caisse.solde_disponible >= 0 ? '#10b981' : '#ef4444'}; font-weight: 500;">
-                    ${caisse.solde_disponible >= 0 ? '+' : ''}${caisse.solde_disponible?.toLocaleString() || 0} FCFA
+                <span style="color: ${(caisse.fond_initial + caisse.fond_disponible) >= 0 ? '#10b981' : '#ef4444'}; font-weight: 500;">
+                    ${((caisse.fond_initial||0)+(caisse.fond_disponible||0)) >= 0 ? '+' : ''}${(((caisse.fond_initial||0)+(caisse.fond_disponible||0))?.toLocaleString()) || 0} FCFA
                 </span>
             </div>
             <div class="caisse-name">${caisse.nom}</div>
@@ -223,7 +223,6 @@ function displayCaisses(caisses) {
             <div class="caisse-actions">
                 <a href="/adminsecurelogin/gestion_caisses/caisse/${caisse.id}/change/" class="action-btn btn-view">Voir</a>
                 <a href="/adminsecurelogin/gestion_caisses/caisse/${caisse.id}/change/" class="action-btn btn-edit">Modifier</a>
-                <a href="/adminsecurelogin/gestion_caisses/caisse/${caisse.id}/delete/" class="action-btn btn-delete">Supprimer</a>
             </div>
         </div>
     `).join('');

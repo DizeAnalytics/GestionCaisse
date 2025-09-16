@@ -1,0 +1,279 @@
+{% extends 'gestion_caisses/rapports/base_rapport.html' %}
+
+{% block title %}Rapport Financier - Gestion des Caisses{% endblock %}
+
+{% block rapport_title %}Rapport Financier{% endblock %}
+{% block rapport_subtitle %}Analyse détaillée des fonds et mouvements financiers{% endblock %}
+{% block rapport_type %}Financier{% endblock %}
+{% block rapport_period %}Toutes périodes{% endblock %}
+
+{% block rapport_content %}
+    <!-- Section Statistiques Générales -->
+    <div class="section">
+        <h2 class="section-title">📊 Statistiques Générales</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ caisses.count }}</div>
+                <div class="stat-label">Caisses Actives</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ solde_systeme|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Solde Système</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ solde_reserve|floatformat:0 }} FCFA</div>
+                <div class="stat-label">Solde Réserve</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ date_generation|date:"d/m/Y" }}</div>
+                <div class="stat-label">Date de Génération</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section État des Caisses -->
+    <div class="section">
+        <h2 class="section-title">🏦 État des Caisses</h2>
+        
+        {% if caisses %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nom de l'Association</th>
+                        <th>Fond Disponible</th>
+                        <th>Total Prêts</th>
+                        <th>Prêts Actifs</th>
+                        <th>Montant Prêts</th>
+                        <th>Montant Remboursé</th>
+                        <th>Solde Net</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for caisse in caisses %}
+                    <tr>
+                        <td>{{ caisse.nom_association }}</td>
+                        <td class="text-right">{{ caisse.fond_disponible|floatformat:0 }} FCFA</td>
+                        <td class="text-center">{{ caisse.total_prets|default:0 }}</td>
+                        <td class="text-center">{{ caisse.prets_actifs|default:0 }}</td>
+                        <td class="text-right">{{ caisse.montant_prets|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-right">{{ caisse.montant_rembourse|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-right">
+                            <span class="solde-net" data-fond="{{ caisse.fond_disponible }}" data-prets="{{ caisse.montant_prets|default:0 }}" data-rembourse="{{ caisse.montant_rembourse|default:0 }}">0</span> FCFA
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucune caisse disponible pour l'analyse.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Mouvements de Fonds -->
+    <div class="section">
+        <h2 class="section-title">💰 Mouvements de Fonds</h2>
+        
+        {% if mouvements %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Caisse</th>
+                        <th>Type</th>
+                        <th>Montant</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mouvement in mouvements %}
+                    <tr>
+                        <td>{{ mouvement.date_mouvement|date:"d/m/Y" }}</td>
+                        <td>{{ mouvement.caisse.nom_association|default:"-" }}</td>
+                        <td>
+                            <span class="badge badge-{{ mouvement.type_mouvement|lower }}">
+                                {{ mouvement.get_type_mouvement_display }}
+                            </span>
+                        </td>
+                        <td class="text-right">{{ mouvement.montant|floatformat:0 }} FCFA</td>
+                        <td>{{ mouvement.description|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucun mouvement de fonds disponible pour l'analyse.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Type de Mouvement -->
+    <div class="section">
+        <h2 class="section-title">📈 Statistiques par Type de Mouvement</h2>
+        
+        {% if stats_mouvements %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type de Mouvement</th>
+                        <th>Nombre</th>
+                        <th>Montant Total</th>
+                        <th>Pourcentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_mouvements %}
+                    <tr>
+                        <td>{{ stat.type_mouvement }}</td>
+                        <td class="text-center">{{ stat.nombre|default:0 }}</td>
+                        <td class="text-right">{{ stat.total|default:0|floatformat:0 }} FCFA</td>
+                        <td class="text-center">
+                            <span class="pourcentage-mouvement" data-total="{{ stat.total|default:0 }}">0</span>%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucune statistique de mouvement disponible.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Analyse de la Caisse Générale -->
+    <div class="section">
+        <h2 class="section-title">🏛️ Analyse de la Caisse Générale</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">État des Fonds</h3>
+            
+            <div class="caisse-generale-stats">
+                <div class="stat-item">
+                    <span class="stat-icon">💰</span>
+                    <span class="stat-label">Solde Réserve</span>
+                    <span class="stat-value">{{ solde_reserve|floatformat:0 }} FCFA</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🏦</span>
+                    <span class="stat-label">Solde Total Caisses</span>
+                    <span class="stat-value">{{ solde_total_caisses|floatformat:0 }} FCFA</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">📊</span>
+                    <span class="stat-label">Solde Système</span>
+                    <span class="stat-value">{{ solde_systeme|floatformat:0 }} FCFA</span>
+                </div>
+            </div>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Analyse de la Santé Financière</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>📊 <strong>Liquidité :</strong> {{ solde_reserve|floatformat:0 }} FCFA disponibles en réserve</li>
+                <li>🏦 <strong>Investissements :</strong> {{ solde_total_caisses|floatformat:0 }} FCFA investis dans les caisses</li>
+                <li>📈 <strong>Total :</strong> {{ solde_systeme|floatformat:0 }} FCFA de valeur totale du système</li>
+                <li>🔍 <strong>Période d'analyse :</strong> Derniers 30 jours</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Section Analyse et Recommandations -->
+    <div class="section">
+        <h2 class="section-title">💡 Analyse et Recommandations</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">Points Clés de l'Analyse</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Total des caisses :</strong> {{ caisses.count }} caisses actives</li>
+                <li><strong>Fonds totaux :</strong> {{ solde_systeme|floatformat:0 }} FCFA</li>
+                <li><strong>Mouvements analysés :</strong> {{ mouvements.count }} mouvements ce mois</li>
+                <li><strong>Période d'analyse :</strong> Derniers 30 jours</li>
+            </ul>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Recommandations</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>💰 <strong>Gestion de la réserve :</strong> Maintenir un niveau de réserve suffisant</li>
+                <li>🏦 <strong>Équilibrage des fonds :</strong> Répartir équitablement entre les caisses</li>
+                <li>📊 <strong>Suivi des mouvements :</strong> Surveiller régulièrement les entrées/sorties</li>
+                <li>🔍 <strong>Audit financier :</strong> Vérifier la cohérence des soldes</li>
+                <li>📋 <strong>Reporting :</strong> Générer ce rapport mensuellement</li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .caisse-generale-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .stat-item {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .stat-icon {
+        font-size: 2em;
+        display: block;
+        margin-bottom: 10px;
+    }
+    
+    .stat-label {
+        display: block;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .stat-value {
+        display: block;
+        font-size: 1.5em;
+        color: #007bff;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Calculer les soldes nets et pourcentages
+    document.addEventListener('DOMContentLoaded', function() {
+        // Soldes nets des caisses
+        document.querySelectorAll('.solde-net').forEach(function(element) {
+            const fond = parseFloat(element.dataset.fond) || 0;
+            const prets = parseFloat(element.dataset.prets) || 0;
+            const rembourse = parseFloat(element.dataset.rembourse) || 0;
+            const soldeNet = fond - (prets - rembourse);
+            element.textContent = soldeNet.toFixed(0);
+        });
+        
+        // Pourcentages des mouvements
+        const totalMouvements = {{ stats_mouvements|length }};
+        if (totalMouvements > 0) {
+            document.querySelectorAll('.pourcentage-mouvement').forEach(function(element) {
+                const total = parseFloat(element.dataset.total) || 0;
+                const pourcentage = (total / totalMouvements * 100).toFixed(1);
+                element.textContent = pourcentage;
+            });
+        }
+    });
+</script>
+{% endblock %}

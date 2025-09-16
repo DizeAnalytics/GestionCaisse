@@ -19,6 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
+from django.views.generic import TemplateView
 from gestion_caisses import honeypot_views
 
 urlpatterns = [
@@ -33,6 +34,9 @@ urlpatterns = [
 
     # Application principale avec frontend
     path('gestion-caisses/', include('gestion_caisses.urls', namespace='gestion_caisses')),
+
+    # Service Worker à la racine pour PWA (scope global)
+    path('sw.js', TemplateView.as_view(template_name='pwa/sw.js', content_type='application/javascript'), name='service_worker'),
 ]
 
 # Configuration des fichiers statiques et media en mode debug

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - Gestion des Caisses</title>
-    <link rel="stylesheet" href="{% static 'login/login.css' %}?v=20250813-1">
+    <link rel="stylesheet" href="{% static 'login/login.css' %}?v=20250827-4">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
     <meta http-equiv="Pragma" content="no-cache"/>
     <meta http-equiv="Expires" content="0"/>
@@ -17,6 +17,14 @@
         <div class="floating-shape shape-1"></div>
         <div class="floating-shape shape-2"></div>
         <div class="floating-shape shape-3"></div>
+
+        <!-- Currency and money bag tokens -->
+        <div class="bg-token token-fcfa">FCFA</div>
+        <div class="bg-token token-euro">€</div>
+        <div class="bg-token token-dollar">$</div>
+        <div class="bg-token token-coris">CORIS</div>
+        <div class="bg-token token-bag">💰</div>
+        <div class="bg-token token-bag-2">🪙</div>
     </div>
 
     <div class="login-container">
@@ -28,7 +36,7 @@
                     <div class="logo-icon">€</div>
                 {% endif %}
             </div>
-            <h1 class="company-name">{{ nom_application|default:"CashFlow Pro FKM" }}</h1>
+            <h1 class="company-name">{{ nom_application|default:"Caisse de Solidarité" }}</h1>
             <p class="subtitle">{{ description_application|default:"Gestion des Caisses FKM" }}</p>
         </div>
 
@@ -54,31 +62,10 @@
             </button>
         </form>
 
-        <div class="forgot-password">
-            <a href="#" onclick="showForgotPassword()">Mot de passe oublié ?</a>
-        </div>
-
-        <div class="divider">
-            <span>Fonctionnalités</span>
-        </div>
-
-        <div class="features">
-            <div class="feature">
-                <div class="feature-icon">💰</div>
-                <div class="feature-text">Gestion Caisse</div>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">📊</div>
-                <div class="feature-text">Rapports</div>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">🔒</div>
-                <div class="feature-text">Sécurisé</div>
-            </div>
-        </div>
+        
     </div>
 
-    <script src="{% static 'login/login.js' %}?v=20250813-2"></script>
+    <script src="{% static 'login/login.js' %}?v=20250827-1"></script>
 </body>
 </html>
 

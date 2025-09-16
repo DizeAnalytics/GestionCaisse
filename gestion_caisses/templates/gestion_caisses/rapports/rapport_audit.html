@@ -1,0 +1,251 @@
+{% extends 'gestion_caisses/rapports/base_rapport.html' %}
+
+{% block title %}Rapport d'Audit - Gestion des Caisses{% endblock %}
+
+{% block rapport_title %}Rapport d'Audit du Système{% endblock %}
+{% block rapport_subtitle %}Suivi des actions et activités des utilisateurs{% endblock %}
+{% block rapport_type %}Audit{% endblock %}
+{% block rapport_period %}Toutes périodes{% endblock %}
+
+{% block rapport_content %}
+    <!-- Section Statistiques d'Audit -->
+    <div class="section">
+        <h2 class="section-title">📊 Statistiques d'Audit</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ logs.count }}</div>
+                <div class="stat-label">Total Actions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats_par_action.count }}</div>
+                <div class="stat-label">Types d'Actions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats_par_modele.count }}</div>
+                <div class="stat-label">Modèles Affectés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats_par_utilisateur.count }}</div>
+                <div class="stat-label">Utilisateurs Actifs</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Logs d'Audit Récents -->
+    <div class="section">
+        <h2 class="section-title">📝 Logs d'Audit Récents</h2>
+        
+        {% if logs %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date/Heure</th>
+                        <th>Utilisateur</th>
+                        <th>Action</th>
+                        <th>Modèle</th>
+                        <th>Détails</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.date_action|date:"d/m/Y" }}</td>
+                        <td>{{ log.utilisateur.get_full_name|default:log.utilisateur.username }}</td>
+                        <td>
+                            <span class="badge badge-{{ log.action|lower }}">
+                                {{ log.get_action_display }}
+                            </span>
+                        </td>
+                        <td>{{ log.modele }}</td>
+                        <td>{{ log.description|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p>Aucun log d'audit disponible pour le moment.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Action -->
+    <div class="section">
+        <h2 class="section-title">📈 Statistiques par Type d'Action</h2>
+        
+        {% if stats_par_action %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type d'Action</th>
+                        <th>Nombre</th>
+                        <th>Pourcentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_action %}
+                    <tr>
+                        <td>{{ stat.action }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-center">
+                            <span class="pourcentage-action" data-total="{{ stat.total }}">0</span>%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Modèle -->
+    <div class="section">
+        <h2 class="section-title">🏗️ Statistiques par Modèle</h2>
+        
+        {% if stats_par_modele %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Modèle</th>
+                        <th>Nombre d'Actions</th>
+                        <th>Pourcentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_modele %}
+                    <tr>
+                        <td>{{ stat.modele }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-center">
+                            <span class="pourcentage-modele" data-total="{{ stat.total }}">0</span>%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Statistiques par Utilisateur -->
+    <div class="section">
+        <h2 class="section-title">👤 Statistiques par Utilisateur</h2>
+        
+        {% if stats_par_utilisateur %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th>Nombre d'Actions</th>
+                        <th>Pourcentage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_utilisateur %}
+                    <tr>
+                        <td>{{ stat.utilisateur__username }}</td>
+                        <td class="text-center">{{ stat.total }}</td>
+                        <td class="text-center">
+                            <span class="pourcentage-utilisateur" data-total="{{ stat.total }}">0</span>%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section Analyse de Sécurité -->
+    <div class="section">
+        <h2 class="section-title">🔒 Analyse de Sécurité</h2>
+        
+        <div class="p-20" style="background: #f8f9fa; border-radius: 8px;">
+            <h3 style="color: #007bff; margin-bottom: 15px;">Points Clés de Sécurité</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Total des actions :</strong> {{ logs.count }} actions tracées</li>
+                <li><strong>Période couverte :</strong> Derniers 30 jours</li>
+                <li><strong>Utilisateurs actifs :</strong> {{ stats_par_utilisateur.count }} utilisateurs ont effectué des actions</li>
+                <li><strong>Modèles surveillés :</strong> {{ stats_par_modele.count }} types d'objets sont tracés</li>
+            </ul>
+            
+            <h3 style="color: #007bff; margin: 20px 0 15px 0;">Recommandations de Sécurité</h3>
+            
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>📊 <strong>Surveillance continue :</strong> Maintenir la traçabilité de toutes les actions</li>
+                <li>👤 <strong>Gestion des utilisateurs :</strong> Vérifier régulièrement les permissions</li>
+                <li>🔍 <strong>Analyse des patterns :</strong> Identifier les comportements suspects</li>
+                <li>📝 <strong>Rapports réguliers :</strong> Générer ce rapport périodiquement</li>
+                <li>🛡️ <strong>Audit trail :</strong> Conserver les logs pour la conformité</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Section Graphiques -->
+    <div class="section">
+        <h2 class="section-title">📊 Visualisations</h2>
+        
+        <div class="chart-container">
+            <h3>Répartition des Actions par Type</h3>
+            <div class="chart-placeholder">
+                <p>📈 Graphique des actions par type</p>
+                <p>Ce graphique montrerait la répartition des actions (CRÉATION, MODIFICATION, SUPPRESSION, etc.)</p>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h3>Activité par Utilisateur</h3>
+            <div class="chart-placeholder">
+                <p>👥 Graphique de l'activité par utilisateur</p>
+                <p>Ce graphique montrerait quels utilisateurs sont les plus actifs</p>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h3>Évolution Temporelle</h3>
+            <div class="chart-placeholder">
+                <p>⏰ Graphique de l'évolution temporelle des actions</p>
+                <p>Ce graphique montrerait l'activité au fil du temps</p>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Calculer les pourcentages
+    document.addEventListener('DOMContentLoaded', function() {
+        const totalActions = {{ logs.count }};
+        
+        if (totalActions > 0) {
+            // Pourcentages par action
+            document.querySelectorAll('.pourcentage-action').forEach(function(element) {
+                const total = parseInt(element.dataset.total);
+                const pourcentage = (total / totalActions * 100).toFixed(1);
+                element.textContent = pourcentage;
+            });
+            
+            // Pourcentages par modèle
+            document.querySelectorAll('.pourcentage-modele').forEach(function(element) {
+                const total = parseInt(element.dataset.total);
+                const pourcentage = (total / totalActions * 100).toFixed(1);
+                element.textContent = pourcentage;
+            });
+            
+            // Pourcentages par utilisateur
+            document.querySelectorAll('.pourcentage-utilisateur').forEach(function(element) {
+                const total = parseInt(element.dataset.total);
+                const pourcentage = (total / totalActions * 100).toFixed(1);
+                element.textContent = pourcentage;
+            });
+        }
+    });
+</script>
+{% endblock %}

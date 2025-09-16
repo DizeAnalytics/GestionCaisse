@@ -1,0 +1,45 @@
+{
+  "id": "/gestion-caisses/",
+  "name": "Caisse de Solidarité",
+  "short_name": "Caisse",
+  "description": "Gestion des caisses, prêts, membres et rapports",
+  "start_url": "/gestion-caisses/dashboard/",
+  "scope": "/gestion-caisses/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6f42c1",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    { "src": "/media/logos/téléchargement.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/media/logos/téléchargement.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tableau de bord",
+      "short_name": "Dashboard",
+      "url": "/gestion-caisses/dashboard/",
+      "icons": [{ "src": "/media/logos/téléchargement.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Prêts",
+      "short_name": "Prêts",
+      "url": "/adminsecurelogin/gestion_caisses/pret/",
+      "icons": [{ "src": "/media/logos/téléchargement.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Caisses",
+      "short_name": "Caisses",
+      "url": "/adminsecurelogin/gestion_caisses/caisse/",
+      "icons": [{ "src": "/media/logos/téléchargement.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Membres",
+      "short_name": "Membres",
+      "url": "/adminsecurelogin/gestion_caisses/membre/",
+      "icons": [{ "src": "/media/logos/téléchargement.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
+
+

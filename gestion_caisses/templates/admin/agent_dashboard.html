@@ -313,15 +313,6 @@
 </div>
 
 <script>
-// Actualisation automatique des statistiques
-setInterval(function() {
-    fetch('{% url "gestion_caisses:agent_stats_api" %}')
-        .then(response => response.json())
-        .then(data => {
-            // Mettre à jour les statistiques si nécessaire
-            console.log('Statistiques mises à jour:', data);
-        })
-        .catch(error => console.error('Erreur lors de la mise à jour:', error));
-}, 30000); // Actualiser toutes les 30 secondes
+// Actualisation automatique désactivée
 </script>
 {% endblock %}

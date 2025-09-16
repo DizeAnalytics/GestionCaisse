@@ -201,35 +201,54 @@ def generate_echeances_retard_pdf(caisse=None):
     story.append(Spacer(1, 30))
     story.append(Paragraph("✍️ SIGNATURES", section_style))
     
-    # Récupérer le président général actif
-    try:
-        from .models import PresidentGeneral
-        president_general = PresidentGeneral.objects.filter(statut='ACTIF').first()
-    except:
-        president_general = None
+    # Récupérer les informations du Président Général depuis les paramètres
+    from .utils import get_signature_president_general, create_signatures_table_with_demandeur_first
+    nom_pg, titre_pg, sig_pg, _ = get_signature_president_general()
     
     signatures_data = []
     
-    # Président Général
-    if president_general:
-        if hasattr(president_general, 'signature') and president_general.signature:
+    # Trésorière de la caisse
+    if caisse and caisse.tresoriere:
+        if hasattr(caisse.tresoriere, 'signature') and caisse.tresoriere.signature:
             try:
-                sig_pg = Image(president_general.signature.path, width=1*inch, height=0.5*inch)
+                sig_tres = Image(caisse.tresoriere.signature.path, width=1*inch, height=0.5*inch)
             except:
-                sig_pg = "Signature non disponible"
+                sig_tres = ""
         else:
-            sig_pg = "Signature non disponible"
+            sig_tres = ""
         
         signatures_data.append([
-            "Président Général:",
-            sig_pg,
-            president_general.nom_complet
+            "Trésorière de la caisse:",
+            sig_tres,
+            caisse.tresoriere.nom_complet
         ])
     else:
         signatures_data.append([
-            "Président Général:",
-            "Non défini",
-            "Non défini"
+            "Trésorière de la caisse:",
+            "Non définie",
+            "Non définie"
+        ])
+    
+    # Secrétaire de la caisse
+    if caisse and caisse.secretaire:
+        if hasattr(caisse.secretaire, 'signature') and caisse.secretaire.signature:
+            try:
+                sig_sec = Image(caisse.secretaire.signature.path, width=1*inch, height=0.5*inch)
+            except:
+                sig_sec = ""
+        else:
+            sig_sec = ""
+        
+        signatures_data.append([
+            "Secrétaire de la caisse:",
+            sig_sec,
+            caisse.secretaire.nom_complet
+        ])
+    else:
+        signatures_data.append([
+            "Secrétaire de la caisse:",
+            "Non définie",
+            "Non définie"
         ])
     
     # Présidente de la caisse
@@ -238,9 +257,9 @@ def generate_echeances_retard_pdf(caisse=None):
             try:
                 sig_pres = Image(caisse.presidente.signature.path, width=1*inch, height=0.5*inch)
             except:
-                sig_pres = "Signature non disponible"
+                sig_pres = ""
         else:
-            sig_pres = "Signature non disponible"
+            sig_pres = ""
         
         signatures_data.append([
             "Présidente de la caisse:",
@@ -253,6 +272,16 @@ def generate_echeances_retard_pdf(caisse=None):
             "Non définie",
             "Non définie"
         ])
+    
+    # Président Général (PCA) - EN DERNIER
+    signatures_data.append([
+        f"{titre_pg}:",
+        sig_pg,
+        nom_pg
+    ])
+    
+    # Réorganiser les signatures avec le demandeur en premier (pas applicable pour les échéances)
+    # signatures_data = create_signatures_table_with_demandeur_first(None, signatures_data)
     
     # Créer le tableau des signatures
     signatures_table = Table(signatures_data, colWidths=[2.5*inch, 2*inch, 2*inch])

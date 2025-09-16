@@ -2,22 +2,50 @@
 {% load i18n %}
 
 {% block content_title %}
-  <h1>🏠 Tableau de bord Admin</h1>
+  <h1>🏠 Tableau de bord</h1>
 {% endblock %}
 
 {% block content %}
-  <!-- Actions rapides -->
-  <div class="module" style="margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;">
-    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-      <a class="button" href="/adminsecurelogin/gestion_caisses/pret/" style="background:#6f42c1;color:#fff;border:none;">📄 Prêts</a>
-      <a class="button" href="/adminsecurelogin/gestion_caisses/caisse/" style="background:#2E86AB;color:#fff;border:none;">🏦 Caisses</a>
-      <a class="button" href="/adminsecurelogin/gestion_caisses/membre/" style="background:#388e3c;color:#fff;border:none;">👥 Membres</a>
-      <a class="button" href="/adminsecurelogin/gestion_caisses/notification/" style="background:#ff8f00;color:#fff;border:none;">🔔 Notifications</a>
-      <a class="button" href="/gestion-caisses/guide-application.pdf" style="background:#2e7d32;color:#fff;border:none;">📘 Guide PDF</a>
-    </div>
+  <!-- Bandeau cartes d'actions -->
+  <div class="cards">
+    <button id="pwa-install-btn" class="card" onclick="installPWA()" style="display:none;cursor:pointer;">
+      <div class="icon">📌</div>
+      <div class="title">Installer l'application</div>
+      <div class="desc">Créer un raccourci sur votre bureau</div>
+    </button>
+    <a class="card" href="/adminsecurelogin/gestion_caisses/pret/">
+      <div class="icon">📄</div>
+      <div class="title">Prêts</div>
+      <div class="desc">Gérer les prêts et validations</div>
+    </a>
+    <a class="card" href="/adminsecurelogin/gestion_caisses/caisse/">
+      <div class="icon">🏦</div>
+      <div class="title">Caisses</div>
+      <div class="desc">Paramétrer et suivre les caisses</div>
+    </a>
+    <a class="card" href="/adminsecurelogin/gestion_caisses/membre/">
+      <div class="icon">👥</div>
+      <div class="title">Membres</div>
+      <div class="desc">Inscrire et gérer les membres</div>
+    </a>
+    <a class="card" href="/adminsecurelogin/gestion_caisses/notification/">
+      <div class="icon">🔔</div>
+      <div class="title">Notifications</div>
+      <div class="desc">Suivi des alertes et demandes</div>
+    </a>
+    <a class="card" href="/gestion-caisses/admin-frontend/">
+      <div class="icon">📊</div>
+      <div class="title">Rapports</div>
+      <div class="desc">Rapports globaux et par caisse</div>
+    </a>
+    <a class="card" href="/gestion-caisses/guide-application.pdf">
+      <div class="icon">📘</div>
+      <div class="title">Guide</div>
+      <div class="desc">Télécharger le guide PDF</div>
+    </a>
   </div>
 
-  <!-- Applications -->
+  <!-- Applications (grille) -->
   <div class="app-grid">
     {% for app in app_list %}
       <div class="app-card">
@@ -49,6 +77,29 @@
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
   }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card {
+    display: grid;
+    grid-template-rows: auto auto auto;
+    align-content: start;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.06); }
+  .card .icon { font-size: 22px; }
+  .card .title { font-weight: 700; margin-top: 6px; }
+  .card .desc { color: #666; font-size: 12px; margin-top: 2px; }
   .app-card {
     background: #fff;
     border: 1px solid #e5e7eb;

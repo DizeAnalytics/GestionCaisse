@@ -1,0 +1,385 @@
+{% extends 'gestion_caisses/base.html' %}
+{% load static %}
+{% load math_filters %}
+
+{% block title %}Gestion des Caisses — Cartes{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- En-tête avec statistiques -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="mb-0">
+                    <i class="fa fa-building me-2 text-primary"></i>
+                    Gestion des Caisses
+                </h2>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-primary fs-6">{{ total_caisses }} Caisse{{ total_caisses|pluralize }}</span>
+                    <button class="btn btn-outline-primary btn-sm" onclick="window.location.reload()">
+                        <i class="fa fa-refresh me-1"></i>Actualiser
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtres et recherche -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Rechercher une caisse</label>
+                            <input type="text" id="searchInput" class="form-control" placeholder="Nom, code ou localisation...">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Statut</label>
+                            <select id="statutFilter" class="form-select">
+                                <option value="">Tous les statuts</option>
+                                <option value="ACTIVE">Active</option>
+                                <option value="INACTIVE">Inactive</option>
+                                <option value="SUSPENDUE">Suspendue</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Tri par</label>
+                            <select id="sortFilter" class="form-select">
+                                <option value="date_creation">Date de création</option>
+                                <option value="nom">Nom</option>
+                                <option value="solde">Solde disponible</option>
+                                <option value="code">Code</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button id="clearFilters" class="btn btn-outline-secondary w-100">
+                                <i class="fa fa-times me-1"></i>Effacer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grille des cartes -->
+    <div class="row g-4" id="caissesGrid">
+        {% for data in caisses_data %}
+        <div class="col-12 col-lg-6 col-xl-4 caisse-card" 
+             data-nom="{{ data.caisse.nom_association|lower }}"
+             data-code="{{ data.caisse.code|lower }}"
+             data-localisation="{{ data.localisation|lower }}"
+             data-statut="{{ data.caisse.statut }}"
+             data-date-creation="{{ data.caisse.date_creation|date:'Y-m-d' }}"
+             data-solde="{{ data.caisse.fond_disponible }}">
+            
+            <div class="card h-100 shadow-sm border-0 caisse-card-inner">
+                <!-- En-tête de la carte -->
+                <div class="card-header bg-gradient-primary text-white position-relative">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-1 fw-bold">{{ data.caisse.nom_association }}</h5>
+                            <small class="opacity-75">
+                                <i class="fa fa-tag me-1"></i>{{ data.caisse.code }}
+                            </small>
+                        </div>
+                        <span class="badge bg-light text-dark fs-6">
+                            {% if data.caisse.statut == 'ACTIVE' %}
+                                <i class="fa fa-check-circle text-success me-1"></i>Active
+                            {% elif data.caisse.statut == 'INACTIVE' %}
+                                <i class="fa fa-pause-circle text-warning me-1"></i>Inactive
+                            {% else %}
+                                <i class="fa fa-ban text-danger me-1"></i>Suspendue
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Informations principales -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <div class="text-muted small">Date de création</div>
+                                <div class="fw-bold text-primary">
+                                    <i class="fa fa-calendar me-1"></i>
+                                    {{ data.caisse.date_creation|date:"d/m/Y" }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <div class="text-muted small">Solde disponible</div>
+                                <div class="fw-bold text-success">
+                                    <i class="fa fa-money-bill-wave me-1"></i>
+                                    {{ data.caisse.fond_disponible|floatformat:0 }} FCFA
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <div class="text-muted small">Fond initial</div>
+                                <div class="fw-bold text-primary">
+                                    <i class="fa fa-piggy-bank me-1"></i>
+                                    {{ data.caisse.fond_initial|floatformat:0 }} FCFA
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Localisation -->
+                    <div class="mb-3">
+                        <div class="text-muted small mb-1">
+                            <i class="fa fa-map-marker-alt me-1"></i>Localisation
+                        </div>
+                        <div class="fw-bold">{{ data.localisation }}</div>
+                        <div class="text-muted small">{{ data.agent_responsable }}</div>
+                    </div>
+
+                    <!-- Exercices -->
+                    {% if data.exercice_actuel %}
+                    <div class="mb-3">
+                        <div class="text-muted small mb-1">
+                            <i class="fa fa-calendar-alt me-1"></i>Exercices
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold">
+                                    {{ data.exercice_actuel.date_debut|date:"d/m/Y"|default_if_none:"-" }}
+                                </div>
+                                <div class="text-muted small">
+                                    au {{ data.exercice_actuel.date_fin|date:"d/m/Y"|default_if_none:"-" }}
+                                </div>
+                            </div>
+                            <span class="badge bg-success">
+                                <i class="fa fa-play me-1"></i>En cours
+                            </span>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="mb-3">
+                        <div class="alert alert-warning py-2 mb-0">
+                            <i class="fa fa-exclamation-triangle me-1"></i>
+                            <small>Aucun exercice</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Responsables -->
+                    {% if data.responsables %}
+                    <div class="mb-3">
+                        <div class="text-muted small mb-2">
+                            <i class="fa fa-users me-1"></i>Responsables
+                        </div>
+                        <div class="list-group list-group-flush">
+                            {% for responsable in data.responsables %}
+                            <div class="list-group-item px-0 py-1 border-0">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-bold small">{{ responsable.nom }}</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">{{ responsable.role }}</div>
+                                    </div>
+                                    {% if responsable.telephone %}
+                                    <a href="tel:{{ responsable.telephone }}" class="btn btn-outline-primary btn-sm">
+                                        <i class="fa fa-phone"></i>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Actions -->
+                <div class="card-footer bg-transparent border-0 pt-0">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm flex-fill" 
+                                onclick="voirDetails({{ data.caisse.id }})">
+                            <i class="fa fa-eye me-1"></i>Détails
+                        </button>
+                        <button class="btn btn-outline-success btn-sm flex-fill" 
+                                onclick="voirRapports({{ data.caisse.id }})">
+                            <i class="fa fa-chart-line me-1"></i>Rapports
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" 
+                                onclick="voirMembres({{ data.caisse.id }})">
+                            <i class="fa fa-users"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="text-center py-5">
+                <i class="fa fa-building fa-3x text-muted mb-3"></i>
+                <h4 class="text-muted">Aucune caisse trouvée</h4>
+                <p class="text-muted">Il n'y a actuellement aucune caisse dans le système.</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Modal pour les détails -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails de la caisse</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalContent">
+                <!-- Contenu dynamique -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    }
+    
+    .caisse-card-inner {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    
+    .caisse-card-inner:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+    }
+    
+    .card-header {
+        border-bottom: none;
+    }
+    
+    .list-group-item {
+        background: transparent;
+    }
+    
+    .badge {
+        font-size: 0.75rem;
+    }
+    
+    .text-success {
+        color: #198754 !important;
+    }
+    
+    .text-warning {
+        color: #ffc107 !important;
+    }
+    
+    .text-danger {
+        color: #dc3545 !important;
+    }
+    
+    .text-primary {
+        color: #007bff !important;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Variables globales
+    let allCaisses = [];
+    
+    // Initialisation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Collecter toutes les cartes
+        allCaisses = Array.from(document.querySelectorAll('.caisse-card'));
+        
+        // Événements de filtrage
+        document.getElementById('searchInput').addEventListener('input', filterCaisses);
+        document.getElementById('statutFilter').addEventListener('change', filterCaisses);
+        document.getElementById('sortFilter').addEventListener('change', sortCaisses);
+        document.getElementById('clearFilters').addEventListener('click', clearFilters);
+    });
+    
+    // Fonction de filtrage
+    function filterCaisses() {
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const statutFilter = document.getElementById('statutFilter').value;
+        
+        allCaisses.forEach(card => {
+            const nom = card.dataset.nom;
+            const code = card.dataset.code;
+            const localisation = card.dataset.localisation;
+            const statut = card.dataset.statut;
+            
+            const matchesSearch = !searchTerm || 
+                nom.includes(searchTerm) || 
+                code.includes(searchTerm) || 
+                localisation.includes(searchTerm);
+            
+            const matchesStatut = !statutFilter || statut === statutFilter;
+            
+            if (matchesSearch && matchesStatut) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+    
+    // Fonction de tri
+    function sortCaisses() {
+        const sortBy = document.getElementById('sortFilter').value;
+        const grid = document.getElementById('caissesGrid');
+        
+        const sortedCaisses = allCaisses.sort((a, b) => {
+            switch(sortBy) {
+                case 'nom':
+                    return a.dataset.nom.localeCompare(b.dataset.nom);
+                case 'code':
+                    return a.dataset.code.localeCompare(b.dataset.code);
+                case 'solde':
+                    return parseFloat(b.dataset.solde) - parseFloat(a.dataset.solde);
+                case 'date_creation':
+                default:
+                    return new Date(b.dataset.dateCreation) - new Date(a.dataset.dateCreation);
+            }
+        });
+        
+        // Réorganiser les cartes dans le DOM
+        sortedCaisses.forEach(card => {
+            grid.appendChild(card);
+        });
+    }
+    
+    // Fonction pour effacer les filtres
+    function clearFilters() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('statutFilter').value = '';
+        document.getElementById('sortFilter').value = 'date_creation';
+        
+        allCaisses.forEach(card => {
+            card.style.display = 'block';
+        });
+        
+        sortCaisses();
+    }
+    
+    // Fonctions d'action
+    function voirDetails(caisseId) {
+        // Rediriger vers la page de détails de la caisse
+        window.location.href = `/gestion-caisses/admin/gestion_caisses/caisse/${caisseId}/change/`;
+    }
+    
+    function voirRapports(caisseId) {
+        // Rediriger vers les rapports avec filtre sur cette caisse
+        window.location.href = `/gestion-caisses/admin-frontend/?caisse_id=${caisseId}`;
+    }
+    
+    function voirMembres(caisseId) {
+        // Nouvelle URL admin securisée (changer si nécessaire)
+        window.location.href = `/adminsecurelogin/gestion_caisses/membre/?caisse__id__exact=${caisseId}`;
+    }
+</script>
+{% endblock %}

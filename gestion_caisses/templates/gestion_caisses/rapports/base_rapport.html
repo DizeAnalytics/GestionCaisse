@@ -1,0 +1,495 @@
+{% load math_filters %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Rapport - Gestion des Caisses{% endblock %}</title>
+    <style>
+        /* Styles de base pour tous les rapports */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+            font-size: 12px;
+        }
+        
+        /* En-tête du rapport */
+        .rapport-header {
+            text-align: center;
+            padding: 20px;
+            border-bottom: 3px solid #007bff;
+            margin-bottom: 30px;
+        }
+        
+        .rapport-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        
+        .rapport-subtitle {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .rapport-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        /* Informations de l'entreprise */
+        .entreprise-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .entreprise-details h3 {
+            color: #007bff;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .entreprise-details p {
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .rapport-details {
+            text-align: right;
+        }
+        
+        .rapport-details p {
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        /* Contenu principal */
+        .rapport-content {
+            padding: 0 20px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        /* Tableaux */
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 11px;
+        }
+        
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        th {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        
+        /* Statistiques */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Graphiques et visualisations */
+        .chart-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .chart-placeholder {
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        /* Pied de page */
+        .rapport-footer {
+            margin-top: 50px;
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            font-size: 10px;
+            color: #888;
+        }
+        
+        .signature-section {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            padding: 20px 0;
+        }
+        
+        .signature-box {
+            width: 200px;
+            text-align: center;
+        }
+        
+        .signature-line {
+            border-bottom: 1px solid #333;
+            height: 40px;
+            margin-bottom: 10px;
+        }
+        
+        .signature-title {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .signature-name {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        /* Styles pour l'impression */
+        @media print {
+            body {
+                font-size: 10px;
+            }
+            
+            .rapport-header {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .rapport-title {
+                font-size: 20px;
+            }
+            
+            .rapport-subtitle {
+                font-size: 14px;
+            }
+            
+            .entreprise-info {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .rapport-content {
+                padding: 0 15px;
+            }
+            
+            .section {
+                margin-bottom: 20px;
+            }
+            
+            .section-title {
+                font-size: 16px;
+                margin-bottom: 10px;
+            }
+            
+            th, td {
+                padding: 6px 8px;
+                font-size: 9px;
+            }
+            
+            .stats-grid {
+                gap: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .stat-card {
+                padding: 15px;
+            }
+            
+            .stat-value {
+                font-size: 20px;
+            }
+            
+            .rapport-footer {
+                margin-top: 30px;
+                padding: 15px;
+            }
+            
+            .signature-section {
+                margin-top: 30px;
+                padding: 15px 0;
+            }
+            
+            .signature-box {
+                width: 150px;
+            }
+            
+            /* Masquer les éléments non nécessaires à l'impression */
+            .no-print {
+                display: none !important;
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .entreprise-info {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .rapport-details {
+                text-align: center;
+                margin-top: 15px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .signature-section {
+                flex-direction: column;
+                align-items: center;
+                gap: 20px;
+            }
+        }
+        
+        /* Utilitaires */
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        
+        .text-primary { color: #007bff; }
+        .text-success { color: #28a745; }
+        .text-warning { color: #ffc107; }
+        .text-danger { color: #dc3545; }
+        .text-muted { color: #6c757d; }
+        
+        .font-bold { font-weight: bold; }
+        .font-italic { font-style: italic; }
+        
+        .mb-10 { margin-bottom: 10px; }
+        .mb-20 { margin-bottom: 20px; }
+        .mb-30 { margin-bottom: 30px; }
+        
+        .mt-10 { margin-top: 10px; }
+        .mt-20 { margin-top: 20px; }
+        .mt-30 { margin-top: 30px; }
+        
+        .p-10 { padding: 10px; }
+        .p-20 { padding: 20px; }
+        
+        /* Boutons d'action (masqués à l'impression) */
+        .actions-bar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .action-btn {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .action-btn:hover {
+            background: #0056b3;
+        }
+        
+        .action-btn.success { background: #28a745; }
+        .action-btn.success:hover { background: #1e7e34; }
+        
+        .action-btn.warning { background: #ffc107; color: #212529; }
+        .action-btn.warning:hover { background: #e0a800; }
+        
+        .action-btn.danger { background: #dc3545; }
+        .action-btn.danger:hover { background: #c82333; }
+    </style>
+</head>
+<body>
+    <!-- Barre d'actions (masquée à l'impression) -->
+    <div class="actions-bar no-print">
+        <button class="action-btn" onclick="window.print()">
+            🖨️ Imprimer
+        </button>
+        <a href="{% url 'gestion_caisses:admin_frontend' %}" class="action-btn success">
+            🏠 Retour
+        </a>
+        <button class="action-btn warning" onclick="window.close()">
+            ❌ Fermer
+        </button>
+    </div>
+    
+    <!-- En-tête du rapport -->
+    <div class="rapport-header">
+        <h1 class="rapport-title">{% block rapport_title %}Rapport du Système{% endblock %}</h1>
+        <p class="rapport-subtitle">{% block rapport_subtitle %}Gestion des Caisses de Femmes{% endblock %}</p>
+        <div class="rapport-meta">
+            <span>Généré le : {{ date_generation|date:"d/m/Y" }}</span>
+            <span>Par : {{ user.get_full_name|default:user.username }}</span>
+        </div>
+    </div>
+    
+    <!-- Informations de l'entreprise -->
+    <div class="entreprise-info">
+        <div class="entreprise-details">
+            <h3>{% block entreprise_nom %}FKM - Fédération des Caisses de Femmes{% endblock %}</h3>
+            <p>{% block entreprise_adresse %}Siège social et adresse de l'entreprise{% endblock %}</p>
+            <p>{% block entreprise_contact %}Téléphone et email de contact{% endblock %}</p>
+        </div>
+        <div class="rapport-details">
+            <p><strong>Type de rapport :</strong> {% block rapport_type %}Général{% endblock %}</p>
+            <p><strong>Période :</strong> {% block rapport_periode %}Toutes périodes{% endblock %}</p>
+            <p><strong>Version :</strong> 1.0</p>
+        </div>
+    </div>
+    
+    <!-- Contenu principal du rapport -->
+    <div class="rapport-content">
+        {% block rapport_content %}
+        <!-- Le contenu spécifique sera défini dans les templates enfants -->
+        {% endblock %}
+    </div>
+    
+    <!-- Section des signatures -->
+    <div class="signature-section">
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <div class="signature-title">Président Général</div>
+            <div class="signature-name">Nom du Président</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <div class="signature-title">Directeur Financier</div>
+            <div class="signature-name">Nom du Directeur</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line"></div>
+            <div class="signature-title">Responsable Administratif</div>
+            <div class="signature-name">Nom du Responsable</div>
+        </div>
+    </div>
+    
+    <!-- Pied de page -->
+    <div class="rapport-footer">
+        <p>Ce rapport a été généré automatiquement par le système de gestion des caisses</p>
+        <p>© {% now "Y" %} FKM - Tous droits réservés</p>
+        <p>Page générée le {{ date_generation|date:"d/m/Y" }}</p>
+    </div>
+    
+    <script>
+        // Fonctions utilitaires pour les rapports
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('fr-FR', {
+                style: 'currency',
+                currency: 'XOF',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount);
+        }
+        
+        function formatNumber(number) {
+            return new Intl.NumberFormat('fr-FR').format(number);
+        }
+        
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('fr-FR');
+        }
+        
+        // Masquer la barre d'actions lors de l'impression
+        window.addEventListener('beforeprint', function() {
+            document.querySelector('.actions-bar').classList.add('no-print');
+        });
+        
+        window.addEventListener('afterprint', function() {
+            document.querySelector('.actions-bar').classList.remove('no-print');
+        });
+        
+        // Raccourcis clavier
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'p') {
+                e.preventDefault();
+                window.print();
+            }
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+    </script>
+</body>
+</html>
