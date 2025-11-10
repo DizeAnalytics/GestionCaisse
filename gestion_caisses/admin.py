@@ -188,9 +188,11 @@ class AgentCreationForm(forms.ModelForm):
         ]
     
     def clean_numero_carte_electeur(self):
-        numero_carte = self.cleaned_data['numero_carte_electeur']
-        if Agent.objects.filter(numero_carte_electeur=numero_carte).exists():
-            raise ValidationError("Ce numéro de carte d'électeur existe déjà.")
+        numero_carte = self.cleaned_data.get('numero_carte_electeur')
+        # Si vide, pas de validation d'unicité
+        if numero_carte:
+            if Agent.objects.filter(numero_carte_electeur=numero_carte).exclude(pk=self.instance.pk if self.instance else None).exists():
+                raise ValidationError("Ce numéro de carte d'électeur existe déjà.")
         return numero_carte
     
     def generate_username(self, nom, prenoms):

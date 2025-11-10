@@ -13,6 +13,18 @@ import random
 import string
 
 
+def validate_carte_electeur_optional(value):
+    """Validateur pour le numéro de carte d'électeur (optionnel)"""
+    if not value:  # Si vide, pas de validation
+        return
+    # Valider le format uniquement si fourni
+    validator = RegexValidator(
+        regex=r'^(?!-)(?!.*--)(?=.*-)[A-Z0-9-]{26}(?<!-)$',
+        message="Format invalide. Utiliser exactement 26 caractères (A-Z, 0-9 et '-') sans tiret au début/fin ni doubles tirets."
+    )
+    validator(value)
+
+
 def generate_fkm_code_from_name(model_cls, name_source, field_name='code', prefix='FKM', length=4, max_attempts=50):
     """Génère un code unique de la forme FKM + 4 lettres prises au hasard du nom.
 
@@ -237,13 +249,10 @@ class Agent(models.Model):
     numero_carte_electeur = models.CharField(
         max_length=26,
         unique=True,
-        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets)",
-        validators=[
-            RegexValidator(
-                regex=r'^(?!-)(?!.*--)(?=.*-)[A-Z0-9-]{26}(?<!-)$',
-                message="Format invalide. Utiliser exactement 26 caractères (A-Z, 0-9 et '-') sans tiret au début/fin ni doubles tirets."
-            )
-        ]
+        blank=True,
+        null=True,
+        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets) - Optionnel",
+        validators=[validate_carte_electeur_optional]
     )
     date_naissance = models.DateField()
     adresse = models.TextField()
@@ -361,6 +370,14 @@ class Agent(models.Model):
             if self.carte_electeur_valide:
                 raise ValidationError({
                     'carte_electeur_valide': "Impossible de marquer valide si l'agent ne possède pas de carte."
+                })
+        # Validation du format uniquement si le numéro est fourni
+        if self.numero_carte_electeur:
+            # Vérifier l'unicité uniquement si le numéro est fourni
+            existing = Agent.objects.filter(numero_carte_electeur=self.numero_carte_electeur).exclude(pk=self.pk)
+            if existing.exists():
+                raise ValidationError({
+                    'numero_carte_electeur': f"Ce numéro de carte d'électeur est déjà utilisé par un autre agent."
                 })
 
 
@@ -668,13 +685,10 @@ class Membre(models.Model):
     carte_electeur_valide = models.BooleanField(default=False, verbose_name="Carte d'électeur valide")
     numero_carte_electeur = models.CharField(
         max_length=26,
-        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets)",
-        validators=[
-            RegexValidator(
-                regex=r'^(?!-)(?!.*--)(?=.*-)[A-Z0-9-]{26}(?<!-)$',
-                message="Format invalide. Utiliser exactement 26 caractères (A-Z, 0-9 et '-') sans tiret au début/fin ni doubles tirets."
-            )
-        ]
+        blank=True,
+        null=True,
+        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets) - Optionnel",
+        validators=[validate_carte_electeur_optional]
     )
     
     # Informations personnelles
@@ -734,7 +748,8 @@ class Membre(models.Model):
         verbose_name = "Membre"
         verbose_name_plural = "Membres"
         ordering = ['nom', 'prenoms']
-        unique_together = ['numero_carte_electeur', 'caisse']
+        # unique_together retiré car numero_carte_electeur est maintenant optionnel
+        # L'unicité sera gérée dans clean() si le numéro est fourni
     
     def __str__(self):
         return f"{self.nom} {self.prenoms} - {self.caisse.nom_association}"
@@ -774,6 +789,16 @@ class Membre(models.Model):
             if self.carte_electeur_valide:
                 raise ValidationError({
                     'carte_electeur_valide': "Impossible de marquer valide si le membre ne possède pas de carte."
+                })
+        # Validation de l'unicité du numéro de carte dans la caisse (si fourni)
+        if self.numero_carte_electeur and self.caisse_id:
+            existing = Membre.objects.filter(
+                caisse=self.caisse,
+                numero_carte_electeur=self.numero_carte_electeur
+            ).exclude(pk=self.pk)
+            if existing.exists():
+                raise ValidationError({
+                    'numero_carte_electeur': f"Ce numéro de carte d'électeur est déjà utilisé par un autre membre de cette caisse."
                 })
     
     @property
