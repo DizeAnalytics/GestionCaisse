@@ -288,8 +288,7 @@ JAZZMIN_SETTINGS = {
 	"custom_css": "jazzmin/overrides.css",
 	"custom_js": None,
 	"topmenu_links": [
-		{"name": "Frontend Admin", "url": "/gestion-caisses/admin-frontend/", "permissions": ["auth.view_user"]},
-		{"name": "Tableau de bord", "url": "/gestion-caisses/dashboard/", "permissions": ["auth.view_user"]},
+		{"name": "Tableau de bord", "url": "/gestion-caisses/admin-frontend/", "permissions": ["auth.view_user"]},
 	],
 }
 

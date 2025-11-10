@@ -32,6 +32,9 @@ urlpatterns = [
     # Vrai admin déplacé sur /adminsecurelogin/
     path('adminsecurelogin/', admin.site.urls),
 
+    # Admin également accessible sous /gestion-caisses/admin/ pour correspondre aux liens attendus
+    path('gestion-caisses/admin/', admin.site.urls),
+
     # Application principale avec frontend
     path('gestion-caisses/', include('gestion_caisses.urls', namespace='gestion_caisses')),
 

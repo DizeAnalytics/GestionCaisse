@@ -556,7 +556,7 @@ class Caisse(models.Model):
 
 
 class ExerciceCaisse(models.Model):
-    """Période d'exercice pour une caisse (durée standard: 10 mois).
+    """Période d'exercice pour une caisse (durée standard: 12 mois).
 
     - Seuls les administrateurs peuvent ouvrir un exercice (côté API/admin).
     - Une caisse ne peut pas avoir deux exercices en cours.
@@ -569,7 +569,7 @@ class ExerciceCaisse(models.Model):
 
     caisse = models.ForeignKey('Caisse', on_delete=models.CASCADE, related_name='exercices')
     date_debut = models.DateField()
-    date_fin = models.DateField(null=True, blank=True, help_text="Calcul automatique: date_debut + 10 mois")
+    date_fin = models.DateField(null=True, blank=True, help_text="Calcul automatique: date_debut + 12 mois")
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_COURS')
     notes = models.TextField(blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
@@ -611,14 +611,41 @@ class ExerciceCaisse(models.Model):
                 })
         # Calculer date_fin si manquante
         if not self.date_fin and self.date_debut:
-            self.date_fin = add_months_to_date(self.date_debut, 10)
+            self.date_fin = add_months_to_date(self.date_debut, 12)
 
     def save(self, *args, **kwargs):
         # Assurer la date_fin
         if not self.date_fin and self.date_debut:
-            self.date_fin = add_months_to_date(self.date_debut, 10)
+            self.date_fin = add_months_to_date(self.date_debut, 12)
         super().save(*args, **kwargs)
 
+
+class ExerciceArchive(models.Model):
+    """Archive d'un exercice de caisse (instantané des indicateurs clés).
+
+    Créée uniquement par un administrateur lors de la clôture d'un exercice.
+    """
+    caisse = models.ForeignKey('Caisse', on_delete=models.CASCADE, related_name='archives_exercices')
+    exercice = models.OneToOneField('ExerciceCaisse', on_delete=models.CASCADE, related_name='archive')
+    date_debut = models.DateField()
+    date_fin = models.DateField()
+    archived_at = models.DateTimeField(auto_now_add=True)
+    archived_by = models.ForeignKey('auth.User', null=True, blank=True, on_delete=models.SET_NULL)
+    snapshot = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Archive d'exercice"
+        verbose_name_plural = "Archives d'exercices"
+        ordering = ['-date_fin', '-archived_at']
+        indexes = [
+            models.Index(fields=['caisse']),
+            models.Index(fields=['date_debut']),
+            models.Index(fields=['date_fin']),
+        ]
+
+    def __str__(self):
+        return f"Archive {self.caisse.nom_association} {self.date_debut.strftime('%d/%m/%Y')} - {self.date_fin.strftime('%d/%m/%Y')}"
 
 class Membre(models.Model):
     """Modèle pour les membres des caisses"""
@@ -905,20 +932,56 @@ class Pret(models.Model):
                 'duree_mois': 'La durée du prêt doit être strictement positive.'
             })
 
-        # Règle métier: éligibilité conditionnée au total de cotisations >= 3000 FCFA
+        # Règle métier: éligible si (mois distincts cotisés >= 3) OU (total cotisations >= 5000 FCFA)
         # Appliquée en création uniquement.
         if self.pk is None and self.membre_id and self.caisse_id:
             try:
+                # Interdiction des nouveaux prêts à partir du 10ème mois de l'exercice actif
+                try:
+                    exercice = self.caisse.exercices.filter(statut='EN_COURS').order_by('-date_debut').first()
+                    if exercice and self.date_demande:
+                        # Calculer le mois ordinal (1..N) de la date_demande dans l'exercice
+                        months_since_start = (self.date_demande.date().year - exercice.date_debut.year) * 12 + (self.date_demande.date().month - exercice.date_debut.month) + 1
+                        if months_since_start >= 10:
+                            raise ValidationError({
+                                'date_demande': "Création de prêt interdite à partir du 10ème mois de l'exercice jusqu'à sa clôture."
+                            })
+                except Exception:
+                    # Si pas d'exercice ou date non définie, ne pas bloquer sur cette règle ici (assert_exercice_ouvert gère le cas général)
+                    pass
+
+                mois_ok = self.membre.est_eligible_pret_selon_cotisations(minimum_mois=3)
                 total_cot = self.membre.total_cotisations() if hasattr(self.membre, 'total_cotisations') else 0
-                if total_cot < 3000:
+                if not (mois_ok or (total_cot >= 5000)):
                     raise ValidationError({
-                        'membre': "Le membre n'est pas éligible: au moins 3000 FCFA de cotisations requis avant de demander un prêt."
+                        'membre': "Éligibilité refusée: il faut avoir cotisé pendant au moins 3 mois ou un total minimum de 5000 FCFA."
                     })
             except Exception:
                 # En cas d'erreur d'accès aux cotisations, refuser par prudence
                 raise ValidationError({
                     'membre': "Impossible de vérifier les cotisations du membre. Veuillez réessayer."
                 })
+
+        # Nouvelle contrainte: le montant demandé (et le montant accordé s'il est défini) ne peut pas
+        # dépasser le double du total des cotisations du membre.
+        # Cette règle s'applique en création et en modification.
+        if self.membre_id:
+            try:
+                total_cot_membre = self.membre.total_cotisations() if hasattr(self.membre, 'total_cotisations') else 0
+                plafond = (total_cot_membre or 0) * 2
+                # Vérifier montant demandé
+                if self.montant_demande and float(self.montant_demande) > float(plafond):
+                    raise ValidationError({
+                        'montant_demande': f"Le montant demandé dépasse le plafond autorisé ({plafond:,.0f} FCFA = 2x cotisations cumulées)."
+                    })
+                # Vérifier montant accordé si présent
+                if self.montant_accord and float(self.montant_accord) > float(plafond):
+                    raise ValidationError({
+                        'montant_accord': f"Le montant accordé dépasse le plafond autorisé ({plafond:,.0f} FCFA = 2x cotisations cumulées)."
+                    })
+            except Exception:
+                # Si impossible d'évaluer, ne pas bloquer ici, le service de validation côté admin peut revalider
+                pass
     
     def save(self, *args, **kwargs):
         if not self.numero_pret:
@@ -1271,9 +1334,7 @@ class Cotisation(models.Model):
         return f"Cotisation {self.membre.nom_complet} - {self.caisse.nom_association} ({self.montant_total} FCFA)"
 
     def clean(self):
-        # Bloquer si aucun exercice actif pour la caisse
-        if self.caisse_id:
-            assert_exercice_ouvert(self.caisse)
+        # Autoriser les cotisations même sans exercice actif
         if self.membre.caisse_id != self.caisse_id:
             raise ValidationError("Le membre doit appartenir à la caisse de la cotisation.")
         if self.seance.caisse_id != self.caisse_id:

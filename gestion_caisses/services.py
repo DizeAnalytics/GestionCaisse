@@ -432,6 +432,16 @@ class PretService:
         if not pret.montant_accord:
             pret.montant_accord = pret.montant_demande
         
+        # 2.bis. Règle plafond: montant accordé ne peut pas dépasser 2x le total des cotisations du membre
+        try:
+            total_cot = pret.membre.total_cotisations() if hasattr(pret.membre, 'total_cotisations') else 0
+            plafond = (total_cot or 0) * 2
+            if pret.montant_accord and float(pret.montant_accord) > float(plafond):
+                raise ValueError(f"Montant accordé au-dessus du plafond autorisé ({plafond:,.0f} FCFA = 2x cotisations cumulées)")
+        except Exception:
+            # Si le calcul échoue, on laisse la validation modèle en dernier ressort
+            pass
+        
         # 3. Vérifier le fond disponible dans la caisse
         if pret.caisse.fond_disponible < pret.montant_accord:
             # Bloquer le prêt et notifier l'admin

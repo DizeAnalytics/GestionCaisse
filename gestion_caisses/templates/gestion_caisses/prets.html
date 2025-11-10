@@ -265,11 +265,12 @@
             <select class="form-select" name="membre_id" id="pretMembre" required></select>
             <div id="membreContributionWarning" class="alert alert-warning mt-2" style="display:none; font-size:12px;"></div>
             <div id="membreContributionInfo" class="text-muted mt-1" style="display:none; font-size: 12px;"></div>
+            <div id="membrePlafondInfo" class="text-muted mt-1" style="display:none; font-size: 12px;"></div>
           </div>
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label required">Montant demandé (FCFA)</label>
-              <input class="form-control" name="montant_demande" type="number" required />
+              <input class="form-control" name="montant_demande" id="montant_demande" type="number" required />
             </div>
             <div class="col-md-6">
               <label class="form-label required">Durée (mois)</label>
@@ -360,6 +361,28 @@ async function submitPret(){
         
         const form = document.getElementById('pretForm');
         const payload = Object.fromEntries(new FormData(form).entries());
+        // Validation côté client: montant <= 2x total cotisations
+        const membreIdForAmount = payload['membre_id'];
+        if (membreIdForAmount) {
+            try {
+                const resTot = await fetch(`/gestion-caisses/api/membres/${membreIdForAmount}/cotisations-total/`, { headers: { 'X-CSRFToken': getCSRFToken() } });
+                if (resTot.ok) {
+                    const jsTot = await resTot.json();
+                    const total = parseFloat(jsTot.total_cotisations) || 0;
+                    const plafond = (total || 0) * 2;
+                    const montant = parseFloat(payload['montant_demande'] || '0');
+                    if (!isNaN(montant) && montant > plafond) {
+                        throw new Error(`Le montant demandé dépasse le plafond autorisé (${plafond.toLocaleString('fr-FR')} FCFA).`);
+                    }
+                }
+            } catch (e) {
+                if (e instanceof Error) {
+                    document.getElementById('pretError').textContent = e.message;
+                    document.getElementById('pretError').style.display = 'block';
+                    return;
+                }
+            }
+        }
         payload['caisse_id'] = USER_CAISE_ID;
         const res = await fetch('/gestion-caisses/api/prets/', {
             method: 'POST',
@@ -719,15 +742,40 @@ async function loadMembresForModal() {
                     if (warningDiv) {
                         warningDiv.remove();
                     }
-                    // Vérifier les cotisations cumulées du membre via endpoint dédié
-                    let totalCotisations = 0;
+                    // Bloquer création à partir du 10ème mois de l'exercice actif
                     try {
-                        const res = await fetch(`/gestion-caisses/api/membres/${selectedMembreId}/cotisations-total/`, {
-                            headers: { 'X-CSRFToken': getCSRFToken() }
-                        });
+                        const ctx = await fetch(`${API_BASE}/user-context/`).then(r=>r.json());
+                        const caisseId = ctx.caisse_id;
+                        if (caisseId) {
+                            const caisses = await fetch(`${API_BASE}/caisses/?id=${encodeURIComponent(caisseId)}`).then(r=>r.json());
+                            const my = Array.isArray(caisses.results) ? caisses.results[0] : (Array.isArray(caisses) ? caisses[0] : null);
+                            if (my && my.exercice_actuel && my.exercice_actuel.date_debut) {
+                                const d0 = new Date(my.exercice_actuel.date_debut);
+                                const today = new Date();
+                                const monthsSince = (today.getFullYear()-d0.getFullYear())*12 + (today.getMonth()-d0.getMonth()) + 1;
+                                if (monthsSince >= 10) {
+                                    const submitBtn = document.querySelector('button[onclick="submitPret()"]');
+                                    if (submitBtn) {
+                                        submitBtn.disabled = true;
+                                        submitBtn.textContent = "Soumission impossible - 10ème mois de l'exercice";
+                                    }
+                                    const contribWarning = document.getElementById('membreContributionWarning');
+                                    if (contribWarning) {
+                                        contribWarning.style.display = 'block';
+                                        contribWarning.innerHTML = `<i class='fas fa-exclamation-triangle'></i> Les nouveaux prêts sont interdits à partir du 10ème mois de l'exercice jusqu'à sa clôture.`;
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                    // Nouvelle règle: vérifier le nombre de mois distincts cotisés (>= 3)
+                    let moisCotises = 0;
+                    try {
+                        const res = await fetch(`${API_BASE}/cotisations/stats/membre/?membre_id=${encodeURIComponent(selectedMembreId)}`);
                         if (res.ok) {
                             const js = await res.json();
-                            totalCotisations = parseFloat(js.total_cotisations) || 0;
+                            moisCotises = parseInt(js.nombre_mois_cotises || 0, 10);
                         }
                     } catch (e) {
                         // ne pas bloquer côté frontend; backend fera la validation
@@ -735,29 +783,67 @@ async function loadMembresForModal() {
                     const contribWarning = document.getElementById('membreContributionWarning');
                     const contribInfo = document.getElementById('membreContributionInfo');
                     const submitBtn = document.querySelector('button[onclick="submitPret()"]');
-                    if (totalCotisations < 3000) {
+                    // Règle combinée: mois >= 3 OU total >= 5000 FCFA
+                    // Récupérer aussi le total pour information
+                    let totalCotisations = 0;
+                    try {
+                        const resTot = await fetch(`/gestion-caisses/api/membres/${selectedMembreId}/cotisations-total/`, { headers: { 'X-CSRFToken': getCSRFToken() } });
+                        if (resTot.ok) {
+                            const jsTot = await resTot.json();
+                            totalCotisations = parseFloat(jsTot.total_cotisations) || 0;
+                        }
+                    } catch (e) {}
+
+                    if ((moisCotises < 3) && (totalCotisations < 5000)) {
                         if (contribWarning) {
                             contribWarning.style.display = 'block';
-                            contribWarning.innerHTML = `<i class='fas fa-exclamation-triangle'></i> Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA. Minimum requis: 3000 FCFA.`;
+                            contribWarning.innerHTML = `<i class='fas fa-exclamation-triangle'></i> Non éligible: au moins 3 mois cotisés ou 5000 FCFA cumulés (actuel: ${moisCotises} mois, ${totalCotisations.toLocaleString('fr-FR')} FCFA).`;
                         }
                         if (contribInfo) {
                             contribInfo.style.display = 'block';
-                            contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+                            contribInfo.textContent = `Mois cotisés: ${moisCotises} | Total: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
                         }
                         if (submitBtn) {
                             submitBtn.disabled = true;
-                            submitBtn.textContent = 'Soumission impossible - Cotisations < 3000 FCFA';
+                            submitBtn.textContent = 'Soumission impossible - conditions non remplies';
                         }
                     } else {
                         if (contribWarning) contribWarning.style.display = 'none';
                         if (contribInfo) {
                             contribInfo.style.display = 'block';
-                            contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+                            contribInfo.textContent = `Mois cotisés: ${moisCotises} | Total: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
                         }
                         if (submitBtn) {
                             submitBtn.disabled = false;
                             submitBtn.textContent = 'Enregistrer';
                         }
+                    }
+
+                    // Afficher et appliquer le plafond: montant <= 2 x total cotisations
+                    const plafondInfo = document.getElementById('membrePlafondInfo');
+                    const montantInput = document.getElementById('montant_demande');
+                    const plafond = (totalCotisations || 0) * 2;
+                    if (plafondInfo) {
+                        plafondInfo.style.display = 'block';
+                        plafondInfo.textContent = `Plafond de prêt: ${plafond.toLocaleString('fr-FR')} FCFA (2× cotisations cumulées)`;
+                    }
+                    if (montantInput) {
+                        if (!isNaN(plafond) && plafond > 0) {
+                            montantInput.setAttribute('max', String(Math.floor(plafond)));
+                            montantInput.placeholder = `<= ${plafond.toLocaleString('fr-FR')}`;
+                        } else {
+                            montantInput.removeAttribute('max');
+                            montantInput.placeholder = '';
+                        }
+                        // Vérification immédiate à la saisie
+                        montantInput.oninput = function(){
+                            const val = parseFloat(this.value || '0');
+                            if (!isNaN(val) && val > plafond) {
+                                this.classList.add('is-invalid');
+                            } else {
+                                this.classList.remove('is-invalid');
+                            }
+                        };
                     }
                     
                 }

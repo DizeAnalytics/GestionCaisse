@@ -71,8 +71,8 @@
   height: calc(100vh - 120px); 
   border-radius: 12px; 
   margin-top: 100px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-y: auto; 
+  overflow-x: hidden; 
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .user-info { 
@@ -80,8 +80,8 @@
   border-radius: 12px; 
   padding: 20px; 
   margin-bottom: 24px; 
-  text-align: center;
-  position: relative;
+  text-align: center; 
+  position: relative; 
   z-index: 5;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
@@ -612,7 +612,6 @@
 }
 </style>
 {% endblock %}
-
 {% block content %}
 <div class="dashboard-container container-fluid">
   <!-- Header avec logo et nom de l'application -->
@@ -1262,7 +1261,6 @@ async function loadSalairesAgents(){
   // Charger fiches
   try { await loadFichesPaieRecents(); } catch(e){ console.error(e); }
 }
-
 function renderSalairesStats(data){
   const el = document.getElementById('salaires-stats');
   if (!el) return;
@@ -1780,7 +1778,6 @@ async function fetchUserContext(){
     USER_CAISE_ID = data.caisse_id || null;
   }catch(e){ USER_CAISE_ID = null; }
 }
-
 async function loadCaisse(){
   const wrap = document.getElementById('caisse-card');
   if (!USER_CAISE_ID){ wrap.innerHTML = '<div class="alert alert-warning mt-2">Aucune caisse liée.</div>'; return; }
@@ -2425,7 +2422,6 @@ async function submitMembre(){
     } 
   }
 }
-
 let CURRENT_MEMBRES = [];
 async function loadMembers(){
   const container = document.getElementById('membres-content');
@@ -2607,6 +2603,26 @@ async function submitPret(){
     if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
     const form = document.getElementById('pretForm');
     const payload = Object.fromEntries(new FormData(form).entries());
+    // Validation plafond côté client: montant <= 2x cotisations
+    if (payload.membre_id) {
+      try {
+        const resTot = await fetch(`/gestion-caisses/api/membres/${payload.membre_id}/cotisations-total/`, { headers: { 'X-CSRFToken': getCSRFToken() } });
+        if (resTot.ok) {
+          const jsTot = await resTot.json();
+          const total = parseFloat(jsTot.total_cotisations) || 0;
+          const plafond = (total || 0) * 2;
+          const montant = parseFloat(payload.montant_demande || '0');
+          if (!isNaN(montant) && montant > plafond) {
+            throw new Error(`Le montant demandé dépasse le plafond autorisé (${plafond.toLocaleString('fr-FR')} FCFA).`);
+          }
+        }
+      } catch(e){
+        if (e instanceof Error) {
+          const el = document.getElementById('pretError'); if (el){ el.textContent = e.message; el.style.display='block'; }
+          return;
+        }
+      }
+    }
     const id = payload.id; delete payload.id;
     payload.caisse_id = USER_CAISE_ID;
     
@@ -2622,7 +2638,12 @@ async function submitPret(){
     const method = id ? 'PATCH' : 'POST';
     const url = id ? `/gestion-caisses/api/prets/${id}/` : '/gestion-caisses/api/prets/';
     const r = await fetch(url, { method, headers:{ 'Content-Type':'application/json','X-CSRFToken':getCSRFToken() }, body: JSON.stringify(payload) });
-    if (!r.ok) throw new Error('Échec enregistrement prêt');
+    if (!r.ok) {
+      // remonter le message backend s'il existe
+      const err = await r.json().catch(()=>({}));
+      const msg = err.montant_demande?.[0] || err.membre?.[0] || err.detail || 'Échec enregistrement prêt';
+      throw new Error(msg);
+    }
     closePretModal();
     loadPrets();
   }catch(e){ const el = document.getElementById('pretError'); if (el){ el.textContent = e.message; el.style.display='block'; } }
@@ -2759,37 +2780,94 @@ async function checkMemberLoanStatus() {
     } else {
       warningDiv.style.display = 'none';
 
-      // Vérifier le total des cotisations du membre (endpoint dédié)
-      let totalCotisations = 0;
+      // Bloquer les prêts à partir du 10ème mois de l'exercice en cours
       try {
-        const res = await fetch(`/gestion-caisses/api/membres/${membreId}/cotisations-total/`, { headers: { 'X-CSRFToken': getCSRFToken() } });
-        if (res.ok) {
-          const js = await res.json();
-          totalCotisations = parseFloat(js.total_cotisations) || 0;
+        const caisseResp = await fetch(`${API_BASE}/caisses/?id=${encodeURIComponent(USER_CAISE_ID||'')}`);
+        const caisses = await caisseResp.json();
+        const my = Array.isArray(caisses.results) ? caisses.results[0] : (Array.isArray(caisses) ? caisses[0] : null);
+        if (my && my.exercice_actuel && my.exercice_actuel.date_debut) {
+          const d0 = new Date(my.exercice_actuel.date_debut);
+          const today = new Date();
+          const monthsSince = (today.getFullYear()-d0.getFullYear())*12 + (today.getMonth()-d0.getMonth()) + 1;
+          if (monthsSince >= 10) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Prêt indisponible - 10ème mois de l'exercice";
+            if (contribWarningDiv) {
+              contribWarningDiv.style.display = 'block';
+              contribWarningDiv.innerHTML = `<i class=\"fas fa-exclamation-triangle\"></i> Les nouveaux prêts sont interdits à partir du 10ème mois jusqu'à la clôture de l'exercice.`;
+            }
+            return; // ne pas continuer d'autres validations
+          }
+        }
+      } catch(e) {}
+
+      // Nouvelle règle: vérifier le nombre de mois distincts cotisés (>= 3)
+      let moisCotises = 0;
+      try {
+        const res2 = await fetch(`${API_BASE}/cotisations/stats/membre/?membre_id=${encodeURIComponent(membreId)}`);
+        if (res2.ok) {
+          const js2 = await res2.json();
+          moisCotises = parseInt(js2.nombre_mois_cotises || 0, 10);
         }
       } catch (e) {
         // En cas d'erreur, ne pas bloquer côté frontend; le backend validera
       }
 
-      if (totalCotisations < 3000) {
+      // Règle combinée: mois >= 3 OU total cotisations >= 5000 FCFA
+      let totalCotisations = 0;
+      try {
+        const resTot = await fetch(`/gestion-caisses/api/membres/${membreId}/cotisations-total/`, { headers: { 'X-CSRFToken': getCSRFToken() } });
+        if (resTot.ok) {
+          const jsTot = await resTot.json();
+          totalCotisations = parseFloat(jsTot.total_cotisations) || 0;
+        }
+      } catch (e) {}
+
+      if ((moisCotises < 3) && (totalCotisations < 5000)) {
         if (contribWarningDiv) {
           contribWarningDiv.style.display = 'block';
-          contribWarningDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA. Minimum requis: 3000 FCFA.`;
+          contribWarningDiv.innerHTML = `<i class=\"fas fa-exclamation-triangle\"></i> Non éligible: au moins 3 mois cotisés ou 5000 FCFA cumulés (actuel: ${moisCotises} mois, ${totalCotisations.toLocaleString('fr-FR')} FCFA).`;
         }
         if (contribInfo) {
           contribInfo.style.display = 'block';
-          contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+          contribInfo.textContent = `Mois cotisés: ${moisCotises} | Total: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
         }
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Prêt indisponible - Cotisations < 3000 FCFA';
+        submitBtn.textContent = 'Prêt indisponible - conditions non remplies';
       } else {
         if (contribWarningDiv) contribWarningDiv.style.display = 'none';
         if (contribInfo) {
           contribInfo.style.display = 'block';
-          contribInfo.textContent = `Cotisations cumulées: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
+          contribInfo.textContent = `Mois cotisés: ${moisCotises} | Total: ${totalCotisations.toLocaleString('fr-FR')} FCFA`;
         }
         submitBtn.disabled = false;
         submitBtn.textContent = 'Enregistrer';
+      }
+
+      // Appliquer le plafond 2x cotisations au champ "Montant demandé"
+      const plafondEl = document.getElementById('memberPlafondInfo');
+      const montantInput = document.getElementById('montant_demande');
+      const plafond = (totalCotisations || 0) * 2;
+      if (plafondEl) {
+        plafondEl.style.display = 'block';
+        plafondEl.textContent = `Plafond: ${plafond.toLocaleString('fr-FR')} FCFA (2× cotisations cumulées)`;
+      }
+      if (montantInput) {
+        if (!isNaN(plafond) && plafond > 0) {
+          montantInput.setAttribute('max', String(Math.floor(plafond)));
+          if (parseFloat(montantInput.value||'0') > plafond) {
+            montantInput.classList.add('is-invalid');
+          } else {
+            montantInput.classList.remove('is-invalid');
+          }
+        } else {
+          montantInput.removeAttribute('max');
+          montantInput.classList.remove('is-invalid');
+        }
+        montantInput.oninput = function(){
+          const val = parseFloat(this.value || '0');
+          if (!isNaN(val) && val > plafond) this.classList.add('is-invalid'); else this.classList.remove('is-invalid');
+        };
       }
     }
   } catch (error) {
@@ -2999,7 +3077,6 @@ async function confirmOctroi(pretId) {
     confirmBtn.innerHTML = '<i class="fas fa-hand-holding-usd me-2"></i>Confirmer l\'Octroi';
   }
 }
-
 function showOctroiSuccessModal(pretId, pretData) {
   // Fermer le modal de confirmation
   const confirmationModal = bootstrap.Modal.getInstance(document.getElementById('octroiConfirmationModal'));
@@ -3640,7 +3717,6 @@ async function generateAttestationRemboursementPDF(pretId) {
     }
   }
 }
-
 // Aperçu de l'image sélectionnée
 document.addEventListener('change', function(e){
   // Gestion des checkboxes pour la carte d'électeur
@@ -4208,7 +4284,6 @@ async function initRapportMembreSelect(){
     });
   } catch(e) {}
 }
-
 function afficherRapportGeneral(rapport) {
   return `
     <div class="row">
@@ -4736,7 +4811,6 @@ function afficherRapportMembres(rapport) {
     </div>
   `;
 }
-
 function afficherRapportEcheances(rapport) {
   return `
     <div class="row">
@@ -5363,7 +5437,6 @@ async function telechargerPretsParMotifPDF(btn){
     </div>
   </div>
 </div>
-
 <!-- Modal Dépense -->
 <div class="modal fade" id="depenseModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -5483,11 +5556,12 @@ async function telechargerPretsParMotifPDF(btn){
                 Ce membre n'a pas encore atteint 3000 FCFA de cotisations. Le prêt est indisponible.
               </div>
               <div id="memberContributionInfo" class="text-muted mt-1" style="display:none; font-size: 12px;"></div>
+              <div id="memberPlafondInfo" class="text-muted mt-1" style="display:none; font-size: 12px;"></div>
             </div>
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">Montant demandé (FCFA)</label>
-              <input class="form-control" name="montant_demande" type="number" required oninput="updateInterestPreview()" />
+              <input class="form-control" id="montant_demande" name="montant_demande" type="number" required oninput="updateInterestPreview()" />
             </div>
             <div class="col-md-6">
               <label class="form-label">Durée (mois)</label>
@@ -5727,10 +5801,7 @@ window.openCotisationCreateModal = function(e){
   try { hydrateMembresSelect(); } catch {}
   try { hydrateSeancesSelect(); } catch {}
   // Bloquer ouverture si aucun exercice actif
-  try {
-    const my = (allCaisses||[]).find(c=>true);
-    if (!my || !my.exercice_actuel) { showToast("Aucun exercice en cours pour votre caisse","warning"); return; }
-  } catch {}
+  // Ne plus bloquer les cotisations en absence d'exercice actif
   const el = document.getElementById('cotisationModal');
   if(el){
     try { if (el.parentElement !== document.body) document.body.appendChild(el); } catch {}
@@ -6012,7 +6083,6 @@ async function refreshMemberStats(){
   setText('mStatPenalite', fmt(t.penalite_emprunt_retard||0)+' FCFA');
   drawMemberChart((serie.series||[]).map(x=>x.mois), (serie.series||[]).map(x=>x.total||0));
 }
-
 function drawMemberChart(labels, values){
   const ctx = document.getElementById('cotisationsMemberChart');
   if(!ctx) return;
@@ -6603,7 +6673,6 @@ async function exportDepensesPDF(btn){
 // Variables globales pour les caisses
 let allCaisses = [];
 let caissesLoaded = false;
-
 // CSS pour les cartes de caisses
 const caissesCSS = `
 <style>

@@ -272,6 +272,7 @@ class PretSerializer(serializers.ModelSerializer):
         if self.instance is None:
             membre_id = data.get('membre_id')
             caisse_id = data.get('caisse_id')
+            montant_demande = data.get('montant_demande')
             if membre_id:
                 # Vérifier si le membre a déjà un prêt en cours
                 from .models import Pret, Membre
@@ -286,14 +287,26 @@ class PretSerializer(serializers.ModelSerializer):
                                   "Il doit clôturer ce prêt avant d'en créer un nouveau. "
                                   "Les prêts remboursés permettent de faire un nouveau prêt."
                     })
-                # Règle d'éligibilité: le membre doit avoir cotisé au moins 3000 FCFA
+                # Règle d'éligibilité: au moins 3 mois cotisés OU total cotisations >= 5000 FCFA
                 try:
                     membre = Membre.objects.get(id=membre_id)
-                    total_cot = getattr(membre, 'total_cotisations', None)
-                    total_cot = total_cot() if callable(total_cot) else 0
-                    if total_cot < 3000:
+                    mois_ok = getattr(membre, 'est_eligible_pret_selon_cotisations', None)
+                    mois_ok = mois_ok(minimum_mois=3) if callable(mois_ok) else False
+                    total_cot_fn = getattr(membre, 'total_cotisations', None)
+                    total_cot = total_cot_fn() if callable(total_cot_fn) else 0
+                    # Plafond: 2x total cotisations
+                    if montant_demande is not None:
+                        try:
+                            plafond = (total_cot or 0) * 2
+                            if float(montant_demande) > float(plafond):
+                                raise serializers.ValidationError({
+                                    'montant_demande': f"Le montant demandé dépasse le plafond autorisé ({plafond:,.0f} FCFA = 2x cotisations cumulées)."
+                                })
+                        except Exception:
+                            pass
+                    if not (mois_ok or (total_cot >= 5000)):
                         raise serializers.ValidationError({
-                            'membre': "Éligibilité refusée: le membre doit avoir cotisé au moins 3000 FCFA avant de demander un prêt."
+                            'membre': "Éligibilité refusée: il faut avoir cotisé pendant au moins 3 mois ou un total minimum de 5000 FCFA."
                         })
                     if caisse_id and membre.caisse_id != caisse_id:
                         raise serializers.ValidationError({'caisse': "Le membre doit appartenir à la caisse sélectionnée."})

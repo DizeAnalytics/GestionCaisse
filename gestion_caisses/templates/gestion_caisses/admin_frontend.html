@@ -34,6 +34,9 @@
         <a href="/gestion-caisses/dashboard/" class="btn btn-info">
             <i class="fa fa-chart-line me-1"></i>Dashboard
         </a>
+        <button id="btnArchiver" class="btn btn-warning">
+            <i class="fa fa-box-archive me-1"></i>Archiver l'exercice (caisse sélectionnée)
+        </button>
     </div>
     
     <div class="row g-3">
@@ -403,6 +406,31 @@
         const win = window.open(href, '_blank');
         // Rafraîchir rapidement l'UI (sans attendre la fin du téléchargement)
         setTimeout(() => { try { window.location.reload(); } catch(_) {} }, 500);
+    });
+
+    // Action: Archiver exercice pour la caisse sélectionnée (admin uniquement)
+    document.getElementById('btnArchiver').addEventListener('click', async () => {
+        const caisseId = document.getElementById('caisseSelect').value.trim();
+        if (!caisseId) {
+            showAlert("Veuillez sélectionner une caisse à archiver.");
+            return;
+        }
+        if (!confirm("Confirmer l'archivage de l'exercice pour cette caisse ?")) return;
+        try {
+            const resp = await fetch(`/gestion-caisses/api/caisses/${encodeURIComponent(caisseId)}/archiver_exercice/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/)||[])[1] || '' }
+            });
+            if (!resp.ok) {
+                const txt = await resp.text();
+                showAlert(`Échec de l'archivage: ${txt}`);
+                return;
+            }
+            const js = await resp.json();
+            showAlert(`Archive créée (#${js.archive_id}) du ${js.date_debut} au ${js.date_fin}`, 'alert-success');
+        } catch (e) {
+            showAlert(`Erreur: ${e}`);
+        }
     });
 
     // Charger la liste des caisses

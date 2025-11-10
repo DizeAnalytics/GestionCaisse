@@ -145,14 +145,7 @@ class CotisationViewSet(viewsets.ModelViewSet):
     ordering = ['-date_cotisation']
 
     def perform_create(self, serializer):
-        # Vérifier exercice actif côté API non-admin
-        caisse_id = self.request.data.get('caisse') or self.request.data.get('caisse_id')
-        if caisse_id:
-            try:
-                caisse = Caisse.objects.get(pk=caisse_id)
-                assert_exercice_ouvert(caisse)
-            except Exception as e:
-                raise ValidationError({'caisse': str(e)})
+        # Autoriser la création de cotisations même sans exercice actif
 
         instance = serializer.save(utilisateur=self.request.user)
         # Vérifier le solde disponible avant validation finale
@@ -711,7 +704,7 @@ class CaisseViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
     def ouvrir_exercice(self, request, pk=None):
-        """Admin: ouvrir un exercice (10 mois) pour une caisse donnée.
+        """Admin: ouvrir un exercice (12 mois) pour une caisse donnée.
 
         Input JSON: { "date_debut": "YYYY-MM-DD", "notes": "..." }
         """
@@ -782,6 +775,72 @@ class CaisseViewSet(viewsets.ModelViewSet):
         )
 
         return Response(ExerciceCaisseSerializer(exercice).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def archiver_exercice(self, request, pk=None):
+        """Admin: archiver l'exercice en cours ou récemment clôturé de la caisse.
+
+        Crée une `ExerciceArchive` avec un snapshot des indicateurs clés et retourne l'archive.
+        """
+        caisse = self.get_object()
+        exercice = ExerciceCaisse.objects.filter(caisse=caisse, statut='EN_COURS').order_by('-date_debut').first()
+        if not exercice:
+            exercice = ExerciceCaisse.objects.filter(caisse=caisse, statut='CLOTURE').order_by('-date_fin', '-date_debut').first()
+        if not exercice:
+            raise ValidationError({'detail': "Aucun exercice à archiver pour cette caisse."})
+
+        # Si en cours, clore automatiquement avec la date_fin si absente
+        if exercice.statut == 'EN_COURS' and not exercice.date_fin:
+            from .models import add_months_to_date
+            exercice.date_fin = add_months_to_date(exercice.date_debut, 12)
+            exercice.statut = 'CLOTURE'
+            exercice.save()
+
+        # Snapshot indicateurs
+        totaux_cot = Cotisation.objects.filter(
+            caisse=caisse,
+            date_cotisation__date__gte=exercice.date_debut,
+            date_cotisation__date__lte=exercice.date_fin
+        ).aggregate(total=Sum('montant_total'), nombre=Count('id'))
+        totaux_prets = Pret.objects.filter(
+            caisse=caisse,
+            date_demande__date__gte=exercice.date_debut,
+            date_demande__date__lte=exercice.date_fin
+        ).aggregate(nombre=Count('id'))
+        snapshot = {
+            'cotisations': {
+                'total': float(totaux_cot['total'] or 0),
+                'nombre': int(totaux_cot['nombre'] or 0),
+            },
+            'prets': {
+                'nombre': int(totaux_prets['nombre'] or 0),
+            },
+            'solde_caisse_fin': float(caisse.fond_disponible or 0),
+        }
+
+        from .models import ExerciceArchive
+        archive, created = ExerciceArchive.objects.get_or_create(
+            exercice=exercice,
+            defaults={
+                'caisse': caisse,
+                'date_debut': exercice.date_debut,
+                'date_fin': exercice.date_fin,
+                'archived_by': request.user,
+                'snapshot': snapshot,
+                'notes': request.data.get('notes', ''),
+            }
+        )
+
+        AuditLog.objects.create(
+            utilisateur=request.user,
+            action='ARCHIVE',
+            modele='ExerciceArchive',
+            objet_id=archive.id,
+            details={'caisse': caisse.nom_association, 'exercice_id': exercice.id},
+            ip_adresse=request.META.get('REMOTE_ADDR')
+        )
+
+        return Response({'archive_id': archive.id, 'snapshot': archive.snapshot, 'date_debut': str(archive.date_debut), 'date_fin': str(archive.date_fin)}, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['get'])
     def membres_liste_pdf(self, request, pk=None):
@@ -2248,7 +2307,13 @@ def rapports_caisse_api(request):
             rapport = generer_rapport_echeances_global(date_debut, date_fin) if is_admin else generer_rapport_echeances_caisse(caisse, date_debut, date_fin)
         elif type_rapport == 'cotisations_general':
             # Rapport des cotisations (liste)
-            cotisations = Cotisation.objects.filter(caisse=caisse)
+            # Admin sans caisse_id => global; sinon filtré par caisse
+            if is_admin and caisse is None:
+                cotisations = Cotisation.objects.all()
+                caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+            else:
+                cotisations = Cotisation.objects.filter(caisse=caisse)
+                caisse_info = {'code': caisse.code, 'nom': caisse.nom_association}
             if date_debut:
                 cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
             if date_fin:
@@ -2269,7 +2334,7 @@ def rapports_caisse_api(request):
             ]
             rapport = {
                 'type': 'cotisations_general',
-                'caisse': {'code': caisse.code, 'nom': caisse.nom_association},
+                'caisse': caisse_info,
                 'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
                 'items': items,
                 'totaux': {
@@ -2283,7 +2348,13 @@ def rapports_caisse_api(request):
             }
         elif type_rapport == 'cotisations_par_membre':
             from collections import defaultdict
-            cotisations = Cotisation.objects.filter(caisse=caisse)
+            # Admin sans caisse_id => global; sinon filtré par caisse
+            if is_admin and caisse is None:
+                cotisations = Cotisation.objects.all()
+                caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+            else:
+                cotisations = Cotisation.objects.filter(caisse=caisse)
+                caisse_info = {'code': caisse.code, 'nom': caisse.nom_association}
             if date_debut:
                 cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
             if date_fin:
@@ -2301,7 +2372,7 @@ def rapports_caisse_api(request):
             items = [{'membre': v['nom'], **{k:v[k] for k in ['tempon','solidarite','fondation','penalite','total','nombre']}} for v in agg.values()]
             rapport = {
                 'type': 'cotisations_par_membre',
-                'caisse': {'code': caisse.code, 'nom': caisse.nom_association},
+                'caisse': caisse_info,
                 'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
                 'items': items,
                 'totaux': {
