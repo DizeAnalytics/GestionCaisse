@@ -2577,7 +2577,22 @@ function openPretModal(id){
     submitBtn.textContent = 'Enregistrer';
   }
   
-  loadPretMembres().then(async ()=>{ 
+  // Charger les caisses si admin
+  const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+  const promises = [];
+  if (isAdmin) {
+    promises.push(loadPretCaisses());
+    // Pour les admins, ne pas charger les membres tant qu'une caisse n'est pas sélectionnée
+    const membreSelect = document.getElementById('pretMembre');
+    if (membreSelect) {
+      membreSelect.innerHTML = '<option value="">Sélectionner d\'abord une caisse</option>';
+      membreSelect.disabled = true;
+    }
+  } else {
+    promises.push(loadPretMembres(USER_CAISE_ID));
+  }
+  
+  Promise.all(promises).then(async ()=>{ 
     const modalEl = document.getElementById('pretModal');
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
@@ -2590,19 +2605,75 @@ function openPretModal(id){
 }
 function closePretModal(){ const m = document.getElementById('pretModal'); bootstrap.Modal.getInstance(m)?.hide(); }
 
-async function loadPretMembres(){
+async function loadPretMembres(caisseId = null){
   const sel = document.getElementById('pretMembre');
-  sel.innerHTML = '';
-  const r = await fetch('/gestion-caisses/api/membres/', { headers:{ 'X-CSRFToken':getCSRFToken() }});
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  let url = '/gestion-caisses/api/membres/';
+  if (caisseId) {
+    url += `?caisse=${caisseId}`;
+  }
+  const r = await fetch(url, { headers:{ 'X-CSRFToken':getCSRFToken() }});
   const data = await r.json();
-  (data.results||data).forEach(m=>{ const opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.nom_complet; sel.appendChild(opt); });
+  sel.innerHTML = '';
+  (data.results||data).forEach(m=>{ 
+    const opt = document.createElement('option'); 
+    opt.value = m.id; 
+    opt.textContent = m.nom_complet; 
+    sel.appendChild(opt); 
+  });
+}
+
+async function loadPretCaisses(){
+  const sel = document.getElementById('pretCaisse');
+  if (!sel) return; // Si le champ n'existe pas (non-admin), ne rien faire
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  const r = await fetch('/gestion-caisses/api/caisses/', { headers:{ 'X-CSRFToken':getCSRFToken() }});
+  const data = await r.json();
+  sel.innerHTML = '<option value="">Sélectionner une caisse</option>';
+  (data.results||data).forEach(c=>{ 
+    const opt = document.createElement('option'); 
+    opt.value = c.id; 
+    opt.textContent = `${c.code || ''} ${c.nom_association || ''}`.trim(); 
+    sel.appendChild(opt); 
+  });
+}
+
+function onPretCaisseChange(){
+  const caisseSelect = document.getElementById('pretCaisse');
+  const membreSelect = document.getElementById('pretMembre');
+  if (caisseSelect && membreSelect) {
+    const caisseId = caisseSelect.value;
+    if (caisseId) {
+      membreSelect.disabled = true;
+      membreSelect.innerHTML = '<option value="">Chargement...</option>';
+      loadPretMembres(caisseId).then(() => {
+        membreSelect.disabled = false;
+      });
+    } else {
+      membreSelect.innerHTML = '<option value="">Sélectionner d\'abord une caisse</option>';
+      membreSelect.disabled = true;
+    }
+  }
 }
 
 async function submitPret(){
   try{
-    if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
     const form = document.getElementById('pretForm');
     const payload = Object.fromEntries(new FormData(form).entries());
+    const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+    
+    // Déterminer la caisse à utiliser
+    let caisseId = null;
+    if (isAdmin) {
+      caisseId = payload.caisse_id;
+      if (!caisseId) {
+        throw new Error('Veuillez sélectionner une caisse');
+      }
+    } else {
+      if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
+      caisseId = USER_CAISE_ID;
+    }
+    
     // Validation plafond côté client: montant <= 2x cotisations
     if (payload.membre_id) {
       try {
@@ -2624,7 +2695,7 @@ async function submitPret(){
       }
     }
     const id = payload.id; delete payload.id;
-    payload.caisse_id = USER_CAISE_ID;
+    payload.caisse_id = caisseId;
     
     // Gérer la logique du motif "autres"
     if (payload.motif === 'autres') {
@@ -2918,7 +2989,24 @@ async function prefillPret(id){
   const p = await r.json();
   const form = document.getElementById('pretForm');
   form.id.value = id;
-  document.getElementById('pretMembre').value = p.membre?.id || '';
+  // Préremplir la caisse si admin
+  const caisseSelect = document.getElementById('pretCaisse');
+  const membreSelect = document.getElementById('pretMembre');
+  if (caisseSelect && p.caisse?.id) {
+    caisseSelect.value = p.caisse.id;
+    // Recharger les membres de cette caisse
+    if (membreSelect) {
+      membreSelect.disabled = true;
+      membreSelect.innerHTML = '<option value="">Chargement...</option>';
+    }
+    await loadPretMembres(p.caisse.id);
+    if (membreSelect) {
+      membreSelect.disabled = false;
+    }
+  }
+  if (membreSelect) {
+    membreSelect.value = p.membre?.id || '';
+  }
   form.montant_demande.value = p.montant_demande || p.montant_accord || 0;
   form.duree_mois.value = p.duree_mois || 0;
   form.taux_interet.value = p.taux_interet || 0;
@@ -5544,7 +5632,13 @@ async function telechargerPretsParMotifPDF(btn){
         <form id="pretForm">
           {% csrf_token %}
           <input type="hidden" name="id" />
-                      <div class="mb-3">
+          {% if user_role == 'Administrateur' %}
+          <div class="mb-3">
+            <label class="form-label required">Caisse</label>
+            <select class="form-select" name="caisse_id" id="pretCaisse" required onchange="onPretCaisseChange()"></select>
+          </div>
+          {% endif %}
+          <div class="mb-3">
               <label class="form-label">Membre</label>
               <select class="form-select" name="membre_id" id="pretMembre" required onchange="checkMemberLoanStatus()"></select>
               <div id="memberLoanWarning" class="alert alert-warning mt-2" style="display: none;">
