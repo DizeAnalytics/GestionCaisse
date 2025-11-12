@@ -138,6 +138,56 @@
         margin-bottom: 10px;
         color: #1f2937;
     }
+
+    /* Responsive styles */
+    @media (max-width: 991.98px) {
+        .caisses-grid {
+            grid-template-columns: 1fr !important;
+        }
+        
+        .page-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .caisse-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .caisses-container {
+            padding: 15px !important;
+        }
+        
+        .add-caisse-btn {
+            width: 100%;
+            text-align: center;
+        }
+        
+        .caisse-actions {
+            flex-direction: column;
+        }
+        
+        .action-btn {
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .caisses-container {
+            padding: 10px !important;
+        }
+        
+        .caisse-stats {
+            grid-template-columns: 1fr !important;
+        }
+        
+        .caisse-card {
+            padding: 15px;
+        }
+    }
 </style>
 {% endblock %}
 

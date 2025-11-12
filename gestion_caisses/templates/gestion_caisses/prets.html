@@ -204,6 +204,61 @@
     .montant-negatif {
         color: #ef4444;
     }
+
+    /* Responsive styles */
+    @media (max-width: 991.98px) {
+        .prets-grid {
+            grid-template-columns: 1fr !important;
+        }
+        
+        .page-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .filter-row {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .prets-container {
+            padding: 15px !important;
+        }
+        
+        .add-pret-btn {
+            width: 100%;
+            text-align: center;
+        }
+        
+        .pret-actions {
+            flex-direction: column;
+        }
+        
+        .action-btn {
+            width: 100%;
+        }
+        
+        .filters {
+            padding: 15px;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .prets-container {
+            padding: 10px !important;
+        }
+        
+        .pret-card {
+            padding: 15px;
+        }
+        
+        .detail-row {
+            flex-direction: column;
+            gap: 5px;
+        }
+    }
 </style>
 {% endblock %}
 

@@ -47,6 +47,189 @@
 			padding: 10px 16px;
 		}
 
+		/* Bouton hamburger */
+		.navbar-toggler {
+			border: none;
+			padding: 8px 10px;
+			background: rgba(255,255,255,0.15);
+			border-radius: 8px;
+			color: #fff;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			width: 40px;
+			height: 40px;
+			transition: all .2s ease;
+		}
+
+		.navbar-toggler:hover {
+			background: rgba(255,255,255,0.25);
+		}
+
+		.navbar-toggler:focus {
+			box-shadow: 0 0 0 0.25rem rgba(255,255,255,0.25);
+		}
+
+		.navbar-toggler-icon {
+			display: inline-block;
+			width: 20px;
+			height: 2px;
+			background-color: #fff;
+			position: relative;
+			transition: all .3s ease;
+		}
+
+		.navbar-toggler-icon::before,
+		.navbar-toggler-icon::after {
+			content: '';
+			position: absolute;
+			width: 20px;
+			height: 2px;
+			background-color: #fff;
+			left: 0;
+			transition: all .3s ease;
+		}
+
+		.navbar-toggler-icon::before {
+			top: -6px;
+		}
+
+		.navbar-toggler-icon::after {
+			bottom: -6px;
+		}
+
+		.navbar-toggler[aria-expanded="true"] .navbar-toggler-icon {
+			background-color: transparent;
+		}
+
+		.navbar-toggler[aria-expanded="true"] .navbar-toggler-icon::before {
+			transform: rotate(45deg);
+			top: 0;
+		}
+
+		.navbar-toggler[aria-expanded="true"] .navbar-toggler-icon::after {
+			transform: rotate(-45deg);
+			bottom: 0;
+		}
+
+		/* Menu mobile */
+		.mobile-menu {
+			display: none;
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 280px;
+			height: 100vh;
+			background: linear-gradient(180deg, rgba(102,126,234,1) 0%, rgba(118,75,162,1) 100%);
+			box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+			z-index: 1100;
+			transform: translateX(-100%);
+			transition: transform .3s ease;
+			overflow-y: auto;
+			padding: 20px;
+		}
+
+		.mobile-menu.show {
+			transform: translateX(0);
+		}
+
+		.mobile-menu-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 30px;
+			padding-bottom: 20px;
+			border-bottom: 1px solid rgba(255,255,255,0.2);
+		}
+
+		.mobile-menu-brand {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			color: #fff;
+			font-weight: 700;
+			font-size: 1.1rem;
+		}
+
+		.mobile-menu-brand img {
+			width: 32px;
+			height: 32px;
+			border-radius: 6px;
+		}
+
+		.mobile-menu-close {
+			background: rgba(255,255,255,0.15);
+			border: none;
+			color: #fff;
+			width: 36px;
+			height: 36px;
+			border-radius: 8px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			cursor: pointer;
+			transition: all .2s ease;
+		}
+
+		.mobile-menu-close:hover {
+			background: rgba(255,255,255,0.25);
+		}
+
+		.mobile-menu-nav {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+
+		.mobile-menu-nav .nav-item {
+			margin-bottom: 8px;
+		}
+
+		.mobile-menu-nav .nav-link {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 12px 16px;
+			color: #fff;
+			text-decoration: none;
+			border-radius: 10px;
+			transition: all .2s ease;
+			font-size: 0.95rem;
+			width: 100%;
+			background: transparent;
+			border: none;
+			text-align: left;
+			cursor: pointer;
+		}
+
+		.mobile-menu-nav .nav-link:hover {
+			background: rgba(255,255,255,0.15);
+			transform: translateX(4px);
+		}
+
+		.mobile-menu-nav .nav-link i {
+			width: 20px;
+			text-align: center;
+		}
+
+		.mobile-menu-overlay {
+			display: none;
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: rgba(0,0,0,0.5);
+			z-index: 1099;
+			opacity: 0;
+			transition: opacity .3s ease;
+		}
+
+		.mobile-menu-overlay.show {
+			display: block;
+			opacity: 1;
+		}
+
 		/* Centre exact du titre, quelle que soit la largeur du menu utilisateur */
 		.navbar-center {
 			position: absolute;
@@ -125,15 +308,127 @@
         /* Responsive helpers for embedded tables/cards */
         @media (max-width: 991.98px) {
             .container { border-radius: 12px; }
+            .navbar-toggler {
+                display: flex;
+            }
+            .mobile-menu {
+                display: block;
+            }
+            .navbar-center {
+                left: auto;
+                transform: none;
+                position: relative;
+                flex: 1;
+                text-align: center;
+            }
         }
         @media (max-width: 767.98px) {
             .table-responsive, .responsive-table { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
             table { width: 100%; }
             .navbar .brand-text { font-size: .95rem; }
+            .mobile-menu {
+                width: 260px;
+            }
         }
         @media (max-width: 575.98px) {
             body { padding: 12px; }
             .modern-navbar { padding: 8px 12px; }
+            .mobile-menu {
+                width: 100%;
+            }
+            .navbar .brand-text { font-size: .85rem; }
+        }
+
+        /* Styles responsive globaux pour toutes les pages */
+        @media (max-width: 991.98px) {
+            /* Grilles responsive */
+            .stats-grid,
+            .caisses-grid,
+            .prets-grid,
+            .membres-grid {
+                grid-template-columns: 1fr !important;
+            }
+            
+            /* Headers flexibles */
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 15px;
+            }
+            
+            /* Cartes et conteneurs */
+            .caisse-card,
+            .pret-card,
+            .membre-card,
+            .stat-card {
+                margin-bottom: 15px;
+            }
+            
+            /* Tableaux */
+            table {
+                font-size: 0.875rem;
+            }
+            
+            /* Modals */
+            .modal-dialog {
+                margin: 10px;
+                max-width: calc(100% - 20px);
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            /* Padding réduit sur mobile */
+            .container,
+            .caisses-container,
+            .prets-container,
+            .membres-container {
+                padding: 15px !important;
+            }
+            
+            /* Boutons pleine largeur */
+            .add-caisse-btn,
+            .add-pret-btn,
+            .add-membre-btn {
+                width: 100%;
+                text-align: center;
+            }
+            
+            /* Grilles de stats */
+            .caisse-stats,
+            .pret-stats {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            
+            /* Filtres empilés */
+            .filter-row {
+                grid-template-columns: 1fr !important;
+            }
+            
+            /* Charts responsive */
+            .chart-container {
+                min-height: 250px;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            /* Padding minimal sur très petits écrans */
+            .container,
+            .caisses-container,
+            .prets-container,
+            .membres-container {
+                padding: 10px !important;
+            }
+            
+            /* Stats en une colonne */
+            .caisse-stats,
+            .pret-stats {
+                grid-template-columns: 1fr !important;
+            }
+            
+            /* Textes plus petits */
+            h1 { font-size: 1.5rem !important; }
+            h2 { font-size: 1.25rem !important; }
+            h3 { font-size: 1.1rem !important; }
         }
 
         /* Champ requis: étoile rouge automatique pour label + input/select/textarea[required] */
@@ -186,9 +481,128 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <!-- Overlay pour menu mobile -->
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
+
+    <!-- Menu mobile -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu-header">
+            <div class="mobile-menu-brand">
+                {% if logo %}
+                    <img src="{{ logo.url }}" alt="Logo">
+                {% else %}
+                    <span class="brand-logo">€</span>
+                {% endif %}
+                <span>{{ nom_application|default:"CashFlow Pro FKM" }}</span>
+            </div>
+            <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Fermer le menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <ul class="mobile-menu-nav">
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="dashboard" data-url="/gestion-caisses/dashboard/">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="caisses" data-url="/gestion-caisses/caisses/">
+                    <i class="fas fa-university"></i>
+                    <span>Caisses</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="membres" data-url="/gestion-caisses/membres/">
+                    <i class="fas fa-users"></i>
+                    <span>Membres</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="prets" data-url="/gestion-caisses/prets/">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Prêts</span>
+                </button>
+            </li>
+            {% if user_role == 'Administrateur' %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="salaires" data-url="/gestion-caisses/dashboard/#salaires">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Salaires Agents</span>
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="depenses" data-url="/gestion-caisses/dashboard/#depenses">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Dépenses</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="rapports" data-url="/gestion-caisses/dashboard/#rapports">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Rapports</span>
+                </button>
+            </li>
+            {% if user_role == 'Administrateur' %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="frais_fondation" data-url="/gestion-caisses/dashboard/#frais_fondation">
+                    <i class="fas fa-building"></i>
+                    <span>Frais Fondation</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="motifs" data-url="/gestion-caisses/dashboard/#motifs">
+                    <i class="fas fa-folder"></i>
+                    <span>Motifs Prêts</span>
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="seances" data-url="/gestion-caisses/dashboard/#seances">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Séances</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="cotisations" data-url="/gestion-caisses/dashboard/#cotisations">
+                    <i class="fas fa-coins"></i>
+                    <span>Cotisations</span>
+                </button>
+            </li>
+            {% if user_role == 'Administrateur' %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-target="partage" data-url="/gestion-caisses/dashboard/#partage">
+                    <i class="fas fa-handshake"></i>
+                    <span>Partage de fonds</span>
+                </button>
+            </li>
+            {% endif %}
+            {% if user.is_superuser %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-url="/adminsecurelogin/">
+                    <i class="fas fa-toolbox"></i>
+                    <span>Administration</span>
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <button class="nav-link" type="button" data-action="logout">
+                    <i class="fas fa-right-from-bracket"></i>
+                    <span>Déconnexion</span>
+                </button>
+            </li>
+        </ul>
+    </div>
+
     <!-- Navbar moderne et épurée -->
     <nav class="navbar navbar-expand-lg modern-navbar mb-3 position-relative">
         <div class="container-fluid">
+            <!-- Bouton hamburger (mobile) -->
+            <button class="navbar-toggler" type="button" id="mobileMenuToggle" aria-controls="mobileMenu" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
             <!-- Centre: Logo + Titre -->
             <div class="navbar-center">
                 <a class="navbar-brand d-flex align-items-center gap-2" href="/gestion-caisses/">
@@ -260,6 +674,89 @@
                 alert('Erreur lors de la déconnexion');
             }
         }
+
+        // Gestion du menu mobile hamburger
+        (function() {
+            const menuToggle = document.getElementById('mobileMenuToggle');
+            const mobileMenu = document.getElementById('mobileMenu');
+            const mobileMenuClose = document.getElementById('mobileMenuClose');
+            const mobileMenuOverlay = document.getElementById('mobileMenuOverlay');
+
+            function openMenu() {
+                mobileMenu.classList.add('show');
+                mobileMenuOverlay.classList.add('show');
+                menuToggle.setAttribute('aria-expanded', 'true');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeMenu() {
+                mobileMenu.classList.remove('show');
+                mobileMenuOverlay.classList.remove('show');
+                menuToggle.setAttribute('aria-expanded', 'false');
+                document.body.style.overflow = '';
+            }
+
+            if (menuToggle) {
+                menuToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (mobileMenu.classList.contains('show')) {
+                        closeMenu();
+                    } else {
+                        openMenu();
+                    }
+                });
+            }
+
+            if (mobileMenuClose) {
+                mobileMenuClose.addEventListener('click', closeMenu);
+            }
+
+            if (mobileMenuOverlay) {
+                mobileMenuOverlay.addEventListener('click', closeMenu);
+            }
+
+            // Fermer le menu lors du clic sur un lien
+            if (mobileMenu) {
+                const mobileMenuLinks = mobileMenu.querySelectorAll('.nav-link');
+                mobileMenuLinks.forEach(function(link) {
+                    link.addEventListener('click', function(e) {
+                        const action = this.getAttribute('data-action');
+                        const target = this.getAttribute('data-target');
+                        const url = this.getAttribute('data-url');
+
+                        // Cas déconnexion
+                        if (action === 'logout') {
+                            closeMenu();
+                            logout();
+                            return;
+                        }
+
+                        let handled = false;
+
+                        if (target && typeof window.showSection === 'function') {
+                            const navTab = document.querySelector(`.nav-tab[onclick*="'${target}'"]`);
+                            if (navTab) {
+                                navTab.click();
+                                handled = true;
+                            }
+                        }
+
+                        closeMenu();
+
+                        if (!handled && url) {
+                            window.location.href = url;
+                        }
+                    });
+                });
+            }
+
+            // Fermer le menu avec la touche Escape
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && mobileMenu.classList.contains('show')) {
+                    closeMenu();
+                }
+            });
+        })();
     </script>
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>

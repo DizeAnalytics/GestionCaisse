@@ -167,6 +167,27 @@
   }
 }
 
+/* Cacher le sidebar fixe sur mobile - utiliser uniquement le menu hamburger */
+@media (max-width: 991.98px) {
+  .dashboard-container { 
+    grid-template-columns: 1fr;
+  }
+  
+  .sidebar { 
+    display: none !important; 
+  }
+  
+  .main-content { 
+    padding-top: 20px;
+    width: 100%;
+  }
+  
+  .app-header {
+    position: relative;
+    margin-bottom: 20px;
+  }
+}
+
 /* Styles pour les modals modernes */
 .modal-content {
   border-radius: 15px;
