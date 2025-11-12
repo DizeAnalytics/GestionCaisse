@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#6f42c1">
     <title>{% block title %}App Caisses Femmes Togo{% endblock %}</title>
     {% load static %}
+    <link rel="manifest" href="{% static 'pwa/manifest.webmanifest' %}">
     {% if logo %}
     <link rel="icon" href="{{ logo.url }}" />
     <link rel="apple-touch-icon" href="{{ logo.url }}" />
@@ -153,6 +155,33 @@
             box-shadow: 0 0 0 .2rem rgba(220,53,69,.15);
             border-color: #dc3545;
         }
+
+        #pwa-install-button {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1060;
+            display: none;
+            padding: 12px 18px;
+            border-radius: 999px;
+            background: linear-gradient(120deg, #6f42c1, #8c54f0);
+            color: #fff;
+            border: none;
+            box-shadow: 0 12px 25px rgba(111, 66, 193, 0.35);
+            font-weight: 600;
+            letter-spacing: .2px;
+            transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+        }
+
+        #pwa-install-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 30px rgba(111, 66, 193, 0.45);
+        }
+
+        #pwa-install-button:active {
+            transform: translateY(0);
+            box-shadow: 0 6px 18px rgba(111, 66, 193, 0.3);
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -238,5 +267,62 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     {% block extra_js %}{% endblock %}
     <!-- Auto-refresh désactivé -->
+
+    <button id="pwa-install-button" type="button">
+        <i class="fas fa-download me-2"></i>Installer l'application
+    </button>
+
+    <script>
+        (function() {
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('{% static "pwa/sw.js" %}').catch(function(err) {
+                        console.warn('Service worker registration failed:', err);
+                    });
+                });
+            }
+
+            let deferredPrompt = null;
+            const installButton = document.getElementById('pwa-install-button');
+
+            window.addEventListener('beforeinstallprompt', function(event) {
+                event.preventDefault();
+                deferredPrompt = event;
+                if (installButton) {
+                    installButton.style.display = 'flex';
+                    installButton.style.alignItems = 'center';
+                    installButton.style.justifyContent = 'center';
+                }
+            });
+
+            window.addEventListener('appinstalled', function() {
+                deferredPrompt = null;
+                if (installButton) {
+                    installButton.style.display = 'none';
+                }
+            });
+
+            if (installButton) {
+                installButton.addEventListener('click', async function() {
+                    if (!deferredPrompt) {
+                        installButton.style.display = 'none';
+                        return;
+                    }
+                    installButton.disabled = true;
+                    try {
+                        deferredPrompt.prompt();
+                        const { outcome } = await deferredPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            console.info('PWA install accepted');
+                        }
+                    } finally {
+                        deferredPrompt = null;
+                        installButton.disabled = false;
+                        installButton.style.display = 'none';
+                    }
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
