@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.utils import timezone
-from .models import Notification, Pret, Caisse, AuditLog, Agent
+from datetime import timedelta
+from .models import Notification, Pret, Caisse, AuditLog, Agent, ExerciceCaisse
 
 
 class AgentService:
@@ -389,6 +390,49 @@ class NotificationService:
             pret=pret,
             lien_action=f'/adminsecurelogin/gestion_caisses/pret/{pret.id}/change/'
         )
+    
+    @staticmethod
+    def notifier_cloture_exercice_prochaine(exercice):
+        """Notifier l'administrateur qu'un exercice va se clôturer dans un mois"""
+        # Trouver tous les administrateurs
+        admins = User.objects.filter(is_superuser=True)
+        
+        date_fin_str = exercice.date_fin.strftime('%d/%m/%Y') if exercice.date_fin else 'N/A'
+        
+        for admin in admins:
+            # Vérifier si une notification n'a pas déjà été envoyée pour cet exercice (dans les 30 derniers jours)
+            date_limite = timezone.now() - timedelta(days=30)
+            notification_existante = Notification.objects.filter(
+                destinataire=admin,
+                type_notification='CLOTURE_EXERCICE_PROCHAIN',
+                exercice=exercice,
+                date_creation__gte=date_limite
+            ).exists()
+            
+            if not notification_existante:
+                Notification.objects.create(
+                    destinataire=admin,
+                    type_notification='CLOTURE_EXERCICE_PROCHAIN',
+                    titre=f'Clôture d\'exercice prochaine - {exercice.caisse.nom_association}',
+                    message=f'L\'exercice de la caisse {exercice.caisse.nom_association} se clôturera le {date_fin_str}. Pensez à préparer le partage des fonds.',
+                    caisse=exercice.caisse,
+                    exercice=exercice,
+                    lien_action=f'/adminsecurelogin/gestion_caisses/exercicecaisse/{exercice.id}/change/'
+                )
+                
+                # Log d'audit
+                AuditLog.objects.create(
+                    utilisateur=admin,
+                    action='NOTIFICATION',
+                    modele='ExerciceCaisse',
+                    objet_id=exercice.id,
+                    details={
+                        'type': 'CLOTURE_EXERCICE_PROCHAIN',
+                        'destinataire': admin.username,
+                        'caisse': exercice.caisse.nom_association,
+                        'date_fin': str(exercice.date_fin)
+                    }
+                )
 
 
 class PretService:

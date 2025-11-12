@@ -6,6 +6,9 @@ def app_params(request):
 	params = get_parametres_application()
 	return {
 		'app_params': params,
+		'logo': params.get('logo'),
+		'nom_application': params.get('nom_application'),
+		'description_application': params.get('description_application'),
 	}
 
 

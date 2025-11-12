@@ -1802,7 +1802,192 @@ def generate_remboursement_complet_pdf(pret, mouvements_remboursement, buffer=No
     buffer.close()
     
     return pdf_content
-    
+
+
+def generate_partage_fonds_pdf(exercice, partage_payload, buffer=None):
+    """
+    Génère un PDF de synthèse du partage de fonds pour un exercice donné.
+    """
+    from decimal import Decimal
+
+    if buffer is None:
+        buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=28,
+        bottomMargin=24
+    )
+
+    story = []
+    parametres = get_parametres_application()
+
+    styles = getSampleStyleSheet()
+    normal = styles['Normal']
+    section_style = ParagraphStyle(
+        'Section',
+        parent=styles['Heading3'],
+        fontSize=14,
+        spaceAfter=15,
+        spaceBefore=20,
+        textColor=colors.HexColor('#2E86AB'),
+        fontName='Helvetica-Bold'
+    )
+    small_note = ParagraphStyle(
+        'SmallNote',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#666666')
+    )
+
+    # En-tête standard
+    sous_titre = f"Caisse: {exercice.caisse.nom_association}"
+    create_standard_header(story, parametres, "PARTAGE DES FONDS", sous_titre)
+
+    periode_txt = f"Période de l'exercice: {exercice.date_debut.strftime('%d/%m/%Y')} → {exercice.date_fin.strftime('%d/%m/%Y') if exercice.date_fin else 'N/A'}"
+    story.append(Paragraph(periode_txt, normal))
+    story.append(Paragraph(f"Statut de l'exercice: {exercice.get_statut_display()}", normal))
+    story.append(Paragraph(f"Généré le: {timezone.now().strftime('%d/%m/%Y %H:%M')}", normal))
+    story.append(Spacer(1, 12))
+
+    total_base = Decimal(str(partage_payload.get('total_base', '0')))
+    interet_total = Decimal(str(partage_payload.get('interet_total', '0')))
+    taux_effectif = Decimal(str(partage_payload.get('taux', 0)))
+    repartition = partage_payload.get('repartition', []) or []
+
+    # Résumé financier
+    story.append(Paragraph("📊 RÉSUMÉ FINANCIER", section_style))
+    resume_data = [
+        ["Total principal (base):", f"{total_base:,.2f} FCFA"],
+        ["Intérêt total à répartir:", f"{interet_total:,.2f} FCFA"],
+        ["Taux effectif appliqué:", f"{taux_effectif:.2f}%"],
+        ["Nombre de bénéficiaires:", str(len(repartition))]
+    ]
+    resume_table = Table(resume_data, colWidths=[3.2*inch, 3.0*inch])
+    resume_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8F4FD')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#2E86AB')),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')])
+    ]))
+    story.append(resume_table)
+
+    # Répartition par membre
+    story.append(Paragraph("👥 RÉPARTITION PAR MEMBRE", section_style))
+    membre_rows = [[
+        Paragraph("<b>#</b>", normal),
+        Paragraph("<b>Membre</b>", normal),
+        Paragraph("<b>Principal</b>", normal),
+        Paragraph("<b>Intérêt</b>", normal),
+        Paragraph("<b>Total</b>", normal),
+    ]]
+
+    for idx, item in enumerate(repartition, start=1):
+        principal = Decimal(str(item.get('principal', '0')))
+        interet = Decimal(str(item.get('interet', '0')))
+        total = Decimal(str(item.get('total', '0')))
+        membre_rows.append([
+            Paragraph(str(idx), normal),
+            Paragraph(item.get('membre_nom', '—'), normal),
+            Paragraph(f"{principal:,.2f} FCFA", normal),
+            Paragraph(f"{interet:,.2f} FCFA", normal),
+            Paragraph(f"{total:,.2f} FCFA", normal),
+        ])
+
+    if len(membre_rows) == 1:
+        membre_rows.append([
+            "—",
+            "Aucune donnée",
+            "0,00 FCFA",
+            "0,00 FCFA",
+            "0,00 FCFA"
+        ])
+
+    membres_table = Table(
+        membre_rows,
+        colWidths=[0.5*inch, 2.8*inch, 1.1*inch, 1.1*inch, 1.1*inch]
+    )
+    membres_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#B0C4DE')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+    ]))
+    story.append(membres_table)
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("Les montants sont exprimés en FCFA et arrondis à deux décimales.", small_note))
+
+    # Signatures
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("✍️ SIGNATURES", section_style))
+    nom_pg, titre_pg, sig_pg, _ = get_signature_president_general()
+
+    signatures_data = []
+
+    caisse = exercice.caisse
+    responsables = [
+        ("Présidente de la caisse:", getattr(caisse, 'presidente', None)),
+        ("Secrétaire de la caisse:", getattr(caisse, 'secretaire', None)),
+        ("Trésorière de la caisse:", getattr(caisse, 'tresoriere', None)),
+    ]
+
+    for label, personne in responsables:
+        if personne:
+            if validate_image_file(personne.signature):
+                try:
+                    signature_img = Image(personne.signature.path, width=1*inch, height=0.5*inch)
+                except Exception as e:
+                    logger.warning(f"Erreur lors du chargement de la signature de {label}: {e}")
+                    signature_img = ""
+            else:
+                signature_img = ""
+            signatures_data.append([label, signature_img, personne.nom_complet])
+        else:
+            signatures_data.append([label, "_________________", "Non défini"])
+
+    # Ajouter le PCA (Président Général) en dernier
+    signatures_data.append([f"{titre_pg} de toutes les caisses:", sig_pg, nom_pg])
+
+    signatures_table = Table(signatures_data, colWidths=[2.6*inch, 1.5*inch, 2.4*inch])
+    signatures_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8F4FD')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 0.8, colors.HexColor('#2E86AB')),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
+    ]))
+    story.append(signatures_table)
+
+    story.append(Spacer(1, 20))
+    add_contact_info_to_pdf(story, parametres)
+    create_standard_footer(story, parametres)
+
+    doc.build(story)
+
+    pdf_content = buffer.getvalue()
+    buffer.close()
+    return pdf_content
 
 
 def create_agent_credentials_pdf_response(agent, created_user):

@@ -132,3 +132,12 @@ body.jazzmin-login-page {
 /* Bell badge spacing */
 #gc-notif-bell .navbar-badge { transform: translate(-20%, -35%); }
 
+/* Logo visible en entier partout */
+.brand-image,
+#jazzy-logo img.brand-image,
+.brand-link img.brand-image {
+	object-fit: contain !important;
+	max-width: 100%;
+	max-height: 100%;
+}
+

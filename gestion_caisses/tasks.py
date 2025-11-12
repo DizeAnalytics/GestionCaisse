@@ -1,8 +1,9 @@
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
-from .models import Pret, Caisse, Membre, AuditLog
+from .models import Pret, Caisse, Membre, AuditLog, ExerciceCaisse
 from django.db.models import Sum
+from .services import NotificationService
 
 
 @shared_task
@@ -183,3 +184,66 @@ def envoyer_notifications_retard():
     
     print(f"{notifications_envoyees} notifications de retard envoyées")
     return notifications_envoyees
+
+
+@shared_task
+def verifier_cloture_exercices_prochaine():
+    """Vérifier les exercices qui se clôtureront dans un mois et envoyer des notifications"""
+    print("Vérification des exercices à clôturer prochainement...")
+    
+    today = timezone.now().date()
+    date_limite = today + timedelta(days=30)  # Un mois avant
+    
+    # Trouver les exercices en cours qui se terminent dans un mois
+    exercices_prochains = ExerciceCaisse.objects.filter(
+        statut='EN_COURS',
+        date_fin__lte=date_limite,
+        date_fin__gte=today
+    )
+    
+    notifications_envoyees = 0
+    for exercice in exercices_prochains:
+        # Envoyer la notification
+        NotificationService.notifier_cloture_exercice_prochaine(exercice)
+        notifications_envoyees += 1
+    
+    print(f"{notifications_envoyees} notifications de clôture prochaine envoyées")
+    return notifications_envoyees
+
+
+@shared_task
+def cloturer_exercices_automatiquement():
+    """Clôturer automatiquement les exercices dont la date de fin est passée"""
+    print("Clôture automatique des exercices...")
+    
+    today = timezone.now().date()
+    
+    # Trouver les exercices en cours dont la date de fin est passée
+    exercices_a_cloturer = ExerciceCaisse.objects.filter(
+        statut='EN_COURS',
+        date_fin__lt=today
+    )
+    
+    exercices_clotures = 0
+    for exercice in exercices_a_cloturer:
+        exercice.statut = 'CLOTURE'
+        exercice.save(update_fields=['statut'])
+        
+        # Log d'audit
+        AuditLog.objects.create(
+            action='MODIFICATION',
+            modele='ExerciceCaisse',
+            objet_id=exercice.id,
+            details={
+                'statut_precedent': 'EN_COURS',
+                'nouveau_statut': 'CLOTURE',
+                'raison': 'Clôture automatique - date de fin dépassée',
+                'date_fin': str(exercice.date_fin),
+                'caisse': exercice.caisse.nom_association
+            }
+        )
+        
+        exercices_clotures += 1
+    
+    print(f"{exercices_clotures} exercices clôturés automatiquement")
+    return exercices_clotures

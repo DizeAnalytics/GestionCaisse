@@ -192,8 +192,12 @@ class CaisseSerializer(serializers.ModelSerializer):
         return ', '.join(parts) if parts else 'Non définie'
     
     def get_exercice_actuel(self, obj):
-        """Récupère l'exercice en cours"""
+        """Récupère l'exercice en cours ou le dernier exercice clôturé"""
+        # Priorité: exercice EN_COURS, sinon le dernier exercice (le plus récent)
         exercice = obj.exercices.filter(statut='EN_COURS').first()
+        if not exercice:
+            # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
+            exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
         if exercice:
             return {
                 'id': exercice.id,
@@ -638,8 +642,12 @@ class CaisseListSerializer(serializers.ModelSerializer):
         return ', '.join(parts) if parts else 'Non définie'
     
     def get_exercice_actuel(self, obj):
-        """Récupère l'exercice en cours"""
+        """Récupère l'exercice en cours ou le dernier exercice clôturé"""
+        # Priorité: exercice EN_COURS, sinon le dernier exercice (le plus récent)
         exercice = obj.exercices.filter(statut='EN_COURS').first()
+        if not exercice:
+            # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
+            exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
         if exercice:
             return {
                 'id': exercice.id,

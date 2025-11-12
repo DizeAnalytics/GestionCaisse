@@ -36,7 +36,19 @@ from .serializers import (
     SalaireAgentSerializer, FichePaieSerializer, AgentListSerializer
 )
 from .services import PretService, NotificationService
-from .utils import generate_pret_octroi_pdf, generate_remboursement_pdf, generate_remboursement_complet_pdf, generate_membres_liste_pdf, generate_membre_individual_pdf, get_parametres_application, generate_application_guide_pdf, generate_rapport_pdf, export_rapport_excel, export_rapport_csv
+from .utils import (
+    generate_pret_octroi_pdf,
+    generate_remboursement_pdf,
+    generate_remboursement_complet_pdf,
+    generate_membres_liste_pdf,
+    generate_membre_individual_pdf,
+    generate_partage_fonds_pdf,
+    get_parametres_application,
+    generate_application_guide_pdf,
+    generate_rapport_pdf,
+    export_rapport_excel,
+    export_rapport_csv,
+)
 from datetime import date
 from .permissions import AgentPermissions
 from django.http import HttpResponse, JsonResponse
@@ -111,8 +123,8 @@ def _build_caisse_generale_block(date_debut=None, date_fin=None):
 
 import os
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Sum, Count
-from django.db.models.functions import TruncMonth
+from django.db.models import Sum, Count, Q, F, Prefetch, Case, When
+from django.db.models.functions import TruncMonth, TruncDate
 
 
 def get_user_caisse(user):
@@ -725,18 +737,61 @@ class CaisseViewSet(viewsets.ModelViewSet):
         if ExerciceCaisse.objects.filter(caisse=caisse, statut='EN_COURS').exists():
             raise ValidationError({'detail': 'Un exercice est déjà en cours pour cette caisse.'})
 
+        # Calculer le total des frais de fondation de toutes les cotisations de la caisse
+        from decimal import Decimal
+        from django.db.models import Sum
+        total_frais_fondation = (
+            Cotisation.objects
+            .filter(caisse=caisse)
+            .aggregate(total=Sum('frais_fondation'))['total'] or Decimal('0')
+        )
+
+        # Sauvegarder les valeurs avant modification pour l'audit
+        fond_initial_avant = caisse.fond_initial
+        fond_disponible_avant = caisse.fond_disponible
+
+        # Réinitialiser les comptes de la caisse
+        # fond_initial = 0
+        # fond_disponible = total des frais de fondation (conservés)
+        # Utiliser update() pour éviter la logique automatique de save()
+        Caisse.objects.filter(pk=caisse.pk).update(
+            fond_initial=Decimal('0'),
+            fond_disponible=total_frais_fondation
+        )
+        # Recharger l'objet depuis la base de données
+        caisse.refresh_from_db()
+
+        # Mettre à jour la CaisseGenerale si elle existe
+        try:
+            caisse_generale = CaisseGenerale.get_instance()
+            caisse_generale.recalculer_total_caisses()
+        except Exception:
+            # Ne pas bloquer si la caisse générale n'existe pas ou erreur
+            pass
+
         exercice = ExerciceCaisse.objects.create(
             caisse=caisse,
             date_debut=date_debut,
             notes=notes,
         )
 
+        # Log d'audit pour la création de l'exercice
         AuditLog.objects.create(
             utilisateur=request.user,
             action='CREATION',
             modele='ExerciceCaisse',
             objet_id=exercice.id,
-            details={'caisse': caisse.nom_association, 'date_debut': str(exercice.date_debut), 'date_fin': str(exercice.date_fin)},
+            details={
+                'caisse': caisse.nom_association,
+                'date_debut': str(exercice.date_debut),
+                'date_fin': str(exercice.date_fin),
+                'reinitialisation_comptes': True,
+                'fond_initial_avant': str(fond_initial_avant),
+                'fond_disponible_avant': str(fond_disponible_avant),
+                'fond_initial_apres': '0',
+                'fond_disponible_apres': str(total_frais_fondation),
+                'frais_fondation_conserves': str(total_frais_fondation)
+            },
             ip_adresse=request.META.get('REMOTE_ADDR')
         )
 
@@ -1540,6 +1595,26 @@ class DashboardViewSet(viewsets.ViewSet):
         
         serializer = DashboardStatsSerializer(data)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='frais-fondation-total')
+    def frais_fondation_total(self, request):
+        """Somme totale des frais de fondation.
+        
+        - Admin: somme sur toutes les caisses
+        - Non-admin: somme sur la caisse de l'utilisateur
+        """
+        from .models import Cotisation
+
+        if request.user.is_superuser:
+            agg = Cotisation.objects.aggregate(total_frais_fondation=Sum('frais_fondation'))
+        else:
+            caisse_user = get_user_caisse(request.user)
+            if not caisse_user:
+                return Response({'total_frais_fondation': 0})
+            agg = Cotisation.objects.filter(caisse=caisse_user).aggregate(total_frais_fondation=Sum('frais_fondation'))
+
+        total = agg['total_frais_fondation'] or 0
+        return Response({'total_frais_fondation': total})
     
     @action(detail=False, methods=['get'])
     def alertes(self, request):
@@ -4869,3 +4944,250 @@ class ExerciceCaisseViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(caisse_id=caisse_id)
             
         return queryset
+
+    @action(detail=True, methods=['get'], url_path='partage-preview')
+    def partage_preview(self, request, pk=None):
+        """Prévisualisation du partage de fonds proportionnel aux cotisations (hors fondation) avec intérêt.
+        
+        Query params:
+        - taux: pourcentage d'intérêt (ex: 10 pour 10%)
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        try:
+            exercice = self.get_object()
+        except Exception:
+            return Response({'detail': 'Exercice introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Autorisation: non-admins ne peuvent voir que leur caisse
+        if not request.user.is_superuser:
+            user_caisse = get_user_caisse(request.user)
+            if (not user_caisse) or (exercice.caisse_id != user_caisse.id):
+                return Response({'detail': "Accès refusé à cet exercice."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Taux d'intérêt optionnel (permet de surcharger le calcul automatique si fourni)
+        taux_decimal = None
+        taux_str = request.query_params.get('taux')
+        if taux_str not in (None, ''):
+            try:
+                taux_decimal = Decimal(str(taux_str)).quantize(Decimal('0.01')) / Decimal('100')
+                if taux_decimal < 0:
+                    return Response({'detail': 'Le taux doit être positif.'}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception:
+                return Response({'detail': 'Paramètre taux invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Période de l'exercice
+        date_debut = exercice.date_debut
+        date_fin = exercice.date_fin or timezone.now().date()
+
+        # Agréger les cotisations de l'exercice (hors frais de fondation)
+        # Date de référence: date de séance si disponible, sinon date d'enregistrement de la cotisation
+        cotisations_qs = (
+            Cotisation.objects
+            .filter(caisse=exercice.caisse)
+            .annotate(
+                date_effective=Case(
+                    When(seance__date_seance__isnull=False, then=F('seance__date_seance')),
+                    default=TruncDate('date_cotisation')
+                )
+            )
+            .filter(date_effective__gte=date_debut, date_effective__lte=date_fin)
+            .select_related('membre', 'seance')
+            .values('membre_id', 'membre__nom', 'membre__prenoms')
+            .annotate(
+                s_tempon=Sum('prix_tempon'),
+                s_solidarite=Sum('frais_solidarite'),
+                s_penalite=Sum('penalite_emprunt_retard'),
+                s_fondation=Sum('frais_fondation'),
+            )
+            .order_by('membre_id')
+        )
+
+        # Calcul du principal par membre (hors fondation)
+        repartition = []
+        total_base = Decimal('0')
+        for row in cotisations_qs:
+            base = (row['s_tempon'] or 0) + (row['s_solidarite'] or 0) + (row['s_penalite'] or 0)
+            base = Decimal(str(base))
+            # Inclure tous les membres même si leur principal est 0
+            total_base += base
+            membre_nom = f"{row.get('membre__nom','') or ''} {(row.get('membre__prenoms','') or '')}".strip()
+            if not membre_nom:
+                membre_nom = f"Membre {row['membre_id']}"
+            repartition.append({
+                'membre_id': row['membre_id'],
+                'membre_nom': membre_nom,
+                'principal': base
+            })
+
+        total_base = total_base.quantize(Decimal('0.01'))
+
+        # Montant total des intérêts: calculé à partir des prêts octroyés pendant l'exercice
+        interet_total = Decimal('0.00')
+        prets_qs = Pret.objects.filter(
+            caisse=exercice.caisse
+        ).filter(
+            Q(date_decaissement__date__gte=date_debut, date_decaissement__date__lte=date_fin) |
+            Q(date_decaissement__isnull=True, date_demande__date__gte=date_debut, date_demande__date__lte=date_fin)
+        )
+        for pret in prets_qs:
+            interet_calcule = pret.montant_interet_calcule or Decimal('0.00')
+            if not isinstance(interet_calcule, Decimal):
+                try:
+                    interet_calcule = Decimal(str(interet_calcule))
+                except Exception:
+                    interet_calcule = Decimal('0.00')
+            interet_total += interet_calcule
+        interet_total = interet_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        # Si un taux explicite est fourni, il a priorité
+        if taux_decimal is not None and total_base > 0:
+            interet_total = (total_base * taux_decimal).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        # Calculer le taux effectif (pour information)
+        taux_effectif = Decimal('0.00')
+        if total_base > 0:
+            taux_effectif = (interet_total / total_base * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        # Répartition proportionnelle de l'intérêt
+        results = []
+        for item in repartition:
+            principal = Decimal(str(item['principal'] or 0)).quantize(Decimal('0.01'))
+            if total_base > 0:
+                interet = (principal / total_base * interet_total).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            else:
+                interet = Decimal('0.00')
+            total = (principal + interet).quantize(Decimal('0.01'))
+            results.append({
+                'membre_id': item['membre_id'],
+                'membre_nom': item['membre_nom'],
+                'principal': str(principal),
+                'interet': str(interet),
+                'total': str(total),
+            })
+
+        payload = {
+            'exercice': {
+                'id': exercice.id,
+                'caisse_id': exercice.caisse_id,
+                'caisse_nom': exercice.caisse.nom_association,
+                'date_debut': str(date_debut),
+                'date_fin': str(date_fin),
+                'statut': exercice.statut,
+            },
+            'taux': float(taux_effectif),
+            'total_base': str(total_base),
+            'interet_total': str(interet_total),
+            'repartition': results,
+        }
+        return Response(payload)
+
+    @action(detail=True, methods=['get'], url_path='partage-pdf')
+    def partage_pdf(self, request, pk=None):
+        """Télécharger le PDF récapitulatif du partage de fonds."""
+        exercice = self.get_object()
+        # Interdire la génération de PDF si l'exercice n'est pas clôturé
+        if getattr(exercice, 'statut', None) != 'CLOTURE':
+            return Response(
+                {'detail': "Impossible de générer le PDF: l'exercice est en cours ou non clôturé."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        preview_response = self.partage_preview(request, pk=pk)
+        if preview_response.status_code != status.HTTP_200_OK:
+            return preview_response
+
+        pdf_bytes = generate_partage_fonds_pdf(exercice, preview_response.data)
+
+        filename = f"partage_fonds_{exercice.caisse.code}_{exercice.date_debut.strftime('%Y%m%d')}.pdf"
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser], url_path='effectuer-partage')
+    def effectuer_partage(self, request, pk=None):
+        """
+        Effectue le partage des fonds et réinitialise les comptes de la caisse à 0,
+        sauf les frais de fondation qui sont conservés dans le fond_disponible.
+        """
+        from decimal import Decimal
+        from django.db.models import Sum, Case, When, F
+        from django.db.models.functions import TruncDate
+        from .models import Cotisation, AuditLog
+        
+        try:
+            exercice = self.get_object()
+        except Exception:
+            return Response({'detail': 'Exercice introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Vérifier que l'exercice est clôturé
+        if exercice.statut != 'CLOTURE':
+            return Response(
+                {'detail': "L'exercice doit être clôturé avant d'effectuer le partage."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        caisse = exercice.caisse
+        date_debut = exercice.date_debut
+        date_fin = exercice.date_fin or timezone.now().date()
+
+        # Sauvegarder les valeurs avant modification pour l'audit
+        fond_initial_avant = caisse.fond_initial
+        fond_disponible_avant = caisse.fond_disponible
+
+        # Calculer le total des frais de fondation de l'exercice
+        total_frais_fondation = (
+            Cotisation.objects
+            .filter(caisse=caisse)
+            .annotate(
+                date_effective=Case(
+                    When(seance__date_seance__isnull=False, then=F('seance__date_seance')),
+                    default=TruncDate('date_cotisation')
+                )
+            )
+            .filter(date_effective__gte=date_debut, date_effective__lte=date_fin)
+            .aggregate(total=Sum('frais_fondation'))['total'] or Decimal('0')
+        )
+
+        # Réinitialiser les comptes de la caisse
+        # fond_initial = 0
+        # fond_disponible = total des frais de fondation (conservés)
+        caisse.fond_initial = Decimal('0')
+        caisse.fond_disponible = total_frais_fondation
+        caisse.save(update_fields=['fond_initial', 'fond_disponible'])
+
+        # Mettre à jour la CaisseGenerale si elle existe
+        try:
+            caisse_generale = CaisseGenerale.get_instance()
+            caisse_generale.recalculer_total_caisses()
+        except Exception as e:
+            # Ne pas bloquer si la caisse générale n'existe pas ou erreur
+            pass
+
+        # Enregistrer dans l'audit log
+        AuditLog.objects.create(
+            utilisateur=request.user,
+            action='MODIFICATION',
+            modele='Caisse',
+            objet_id=caisse.id,
+            details={
+                'caisse': caisse.nom_association,
+                'action': 'Réinitialisation après partage',
+                'fond_initial_avant': str(fond_initial_avant),
+                'fond_disponible_avant': str(fond_disponible_avant),
+                'fond_initial_apres': '0',
+                'fond_disponible_apres': str(total_frais_fondation),
+                'frais_fondation_conserves': str(total_frais_fondation),
+                'exercice_id': exercice.id
+            },
+            ip_adresse=request.META.get('REMOTE_ADDR')
+        )
+
+        return Response({
+            'detail': 'Partage effectué avec succès. Les comptes ont été réinitialisés.',
+            'caisse': {
+                'id': caisse.id,
+                'nom': caisse.nom_association,
+                'fond_initial': str(caisse.fond_initial),
+                'fond_disponible': str(caisse.fond_disponible),
+                'frais_fondation_conserves': str(total_frais_fondation)
+            }
+        })

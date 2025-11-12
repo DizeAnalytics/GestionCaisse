@@ -1479,6 +1479,8 @@ class Notification(models.Model):
         ('OCTROI_PRET', 'Octroi de prêt'),
         ('ALERTE_FOND', 'Alerte fond insuffisant'),
         ('ALERTE_RETARD', 'Alerte prêt en retard'),
+        ('CLOTURE_EXERCICE_PROCHAIN', 'Clôture d\'exercice prochaine'),
+        ('CLOTURE_EXERCICE', 'Clôture d\'exercice'),
         ('SYSTEME', 'Notification système'),
     ]
     
@@ -1489,11 +1491,12 @@ class Notification(models.Model):
     ]
     
     destinataire = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Destinataire")
-    type_notification = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type")
+    type_notification = models.CharField(max_length=30, choices=TYPE_CHOICES, verbose_name="Type")
     titre = models.CharField(max_length=200, verbose_name="Titre")
     message = models.TextField(verbose_name="Message")
     caisse = models.ForeignKey(Caisse, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Caisse concernée")
     pret = models.ForeignKey(Pret, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Prêt concerné")
+    exercice = models.ForeignKey('ExerciceCaisse', on_delete=models.CASCADE, null=True, blank=True, verbose_name="Exercice concerné")
     statut = models.CharField(max_length=10, choices=STATUT_CHOICES, default='NON_LU', verbose_name="Statut")
     date_creation = models.DateTimeField(auto_now_add=True, verbose_name="Date de création")
     date_lecture = models.DateTimeField(null=True, blank=True, verbose_name="Date de lecture")

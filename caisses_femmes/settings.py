@@ -342,4 +342,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'gestion_caisses.tasks.envoyer_notifications_retard',
         'schedule': 86400.0,  # Tous les jours
     },
+    'verifier-cloture-exercices-prochaine': {
+        'task': 'gestion_caisses.tasks.verifier_cloture_exercices_prochaine',
+        'schedule': 86400.0,  # Tous les jours
+    },
+    'cloturer-exercices-automatiquement': {
+        'task': 'gestion_caisses.tasks.cloturer_exercices_automatiquement',
+        'schedule': 86400.0,  # Tous les jours
+    },
 }

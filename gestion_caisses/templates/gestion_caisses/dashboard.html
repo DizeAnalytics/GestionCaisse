@@ -30,6 +30,7 @@
   justify-content: center;
   width: 60px;
   height: 60px;
+  padding: 4px;
   background: rgba(255,255,255,0.2);
   border-radius: 50%;
   backdrop-filter: blur(10px);
@@ -44,8 +45,8 @@
 .logo-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .app-title h1 {
@@ -647,10 +648,14 @@
         <button class="nav-tab" id="tab-depenses" onclick="showSection(event,'depenses')">💸 Dépenses</button>
         <button class="nav-tab" id="tab-rapports" onclick="showSection(event,'rapports')">📈 Rapports</button>
         {% if user_role == 'Administrateur' %}
+        <button class="nav-tab" onclick="showSection(event,'frais_fondation')">🏛️ Frais Fondation</button>
         <button class="nav-tab" onclick="showSection(event,'motifs')">🗂️ Motifs Prêts</button>
         {% endif %}
         <button class="nav-tab" onclick="showSection(event,'seances')">🗓️ Séances</button>
         <button class="nav-tab" onclick="showSection(event,'cotisations')">💵 Cotisations</button>
+        {% if user_role == 'Administrateur' %}
+        <button class="nav-tab" onclick="showSection(event,'partage')">🤝 Partage de fonds</button>
+        {% endif %}
     </nav>
   </div>
 
@@ -682,6 +687,85 @@
         <div id="alertes-list" class="alertes-grid"></div>
         </div>
     </div>
+    <div id="frais_fondation" class="content-section">
+      <h2>🏛️ Frais de Fondation</h2>
+      <div class="card shadow-sm my-3">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted">Somme totale des frais de fondation</div>
+            <div class="display-6 fw-bold" id="total-frais-fondation">—</div>
+          </div>
+          <button class="btn btn-outline-primary" onclick="loadFraisFondationTotal()">
+            Actualiser
+          </button>
+        </div>
+      </div>
+      <p class="text-muted small">
+        Valeur agrégée {% if user_role == 'Administrateur' %}sur l'ensemble des caisses du système{% else %}sur votre caisse{% endif %}.
+      </p>
+    </div>
+    {% if user_role == 'Administrateur' %}
+    <div id="partage" class="content-section">
+      <h2>🤝 Partage de fonds</h2>
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            {% if user_role == 'Administrateur' %}
+            <div class="col-md-5">
+              <label class="form-label">Caisse</label>
+              <select id="partage-caisse-select" class="form-select">
+                <option value="">Chargement...</option>
+              </select>
+            </div>
+            {% endif %}
+            <div class="col-md-5">
+              <label class="form-label">Exercice</label>
+              <select id="partage-exercice-select" class="form-select">
+                <option value="">Sélectionner un exercice</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h5 class="m-0">Résultats</h5>
+            <div class="d-flex align-items-center gap-2">
+              <div class="text-muted small" id="partage-totaux">Base: 0 | Intérêt total: 0</div>
+              <button id="partage-btn-pdf" class="btn btn-sm btn-outline-primary" type="button" onclick="telechargerPartagePdf()" disabled>
+                <i class="fa fa-file-pdf-o me-1"></i>PDF
+              </button>
+            </div>
+          </div>
+          <div id="partage-pdf-warning" class="alert alert-warning alert-dismissible fade show d-none" role="alert" style="margin-bottom: 1rem;">
+            <i class="fa fa-exclamation-triangle me-2"></i>
+            <strong>PDF indisponible :</strong> Le partage de fonds ne peut pas être généré en PDF pour un exercice dont le statut est "En cours". Veuillez clôturer l'exercice avant de générer le PDF.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>Membre</th>
+                  <th class="text-end">Principal (hors fondation)</th>
+                  <th class="text-end">Intérêt</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody id="partage-table-body">
+                <tr><td colspan="4" class="text-center text-muted">Aucune donnée</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted small mt-2">
+        Le principal correspond à la somme des cotisations de l'exercice, hors frais de fondation. L'intérêt est réparti proportionnellement au principal.
+      </p>
+    </div>
+    {% endif %}
     <div id="caisses" class="content-section">
       <!-- En-tête avec statistiques -->
       <div class="d-flex justify-content-between align-items-center mb-4">
@@ -922,7 +1006,12 @@
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                   <h5 class="card-title m-0">👤 Stats par membre</h5>
-                  <select id="statsMembre" class="form-select" style="min-width:280px" onchange="refreshMemberStats()"></select>
+                  <div class="d-flex gap-2">
+                    {% if user_role == 'Administrateur' %}
+                    <select id="statsCaisse" class="form-select" style="min-width:220px"></select>
+                    {% endif %}
+                    <select id="statsMembre" class="form-select" style="min-width:280px" onchange="refreshMemberStats()"></select>
+                  </div>
                 </div>
                 <div class="row text-center mb-3">
                   <div class="col-6 col-md-3 mb-2">
@@ -1136,11 +1225,19 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('seanceModal')?.addEventListener('shown.bs.modal', () => {
       const el = document.getElementById('seanceModal');
       try { el?.removeAttribute('aria-hidden'); } catch {}
+      const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+      if (isAdmin) { try { loadSeanceCaisses(); } catch(e){ console.warn(e); } }
       document.getElementById('seanceDate')?.focus();
     });
     document.getElementById('cotisationModal')?.addEventListener('shown.bs.modal', () => {
       const el = document.getElementById('cotisationModal');
       try { el?.removeAttribute('aria-hidden'); } catch {}
+      const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+      if (isAdmin) {
+        try { loadCotisationCaisses(); } catch(e){ console.warn(e); }
+      } else {
+        try { hydrateMembresSelect(); hydrateSeancesSelect(); } catch(e){ console.warn(e); }
+      }
       document.getElementById('cotisationMembre')?.focus();
     });
   } catch(e) { console.warn('Bind buttons error', e); }
@@ -1170,7 +1267,12 @@ function formatDateTimeSafe(value){
 
 function showSection(evt, id){
   document.querySelectorAll('.content-section').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const section = document.getElementById(id);
+  if (!section) {
+    console.warn(`Section "${id}" not found`);
+    return;
+  }
+  section.classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   evt.currentTarget.classList.add('active');
   if (id === 'dashboard') loadDashboardData();
@@ -1179,6 +1281,12 @@ function showSection(evt, id){
   }
   if (id === 'salaires') {
     try { loadSalairesAgents(); } catch(e) { console.error(e); }
+  }
+  if (id === 'frais_fondation') {
+    try { loadFraisFondationTotal(); } catch(e) { console.error(e); }
+  }
+  if (id === 'partage') {
+    try { populatePartageCaisses(); initialiserPartageUI(); } catch(e) { console.error(e); }
   }
 }
 
@@ -1216,6 +1324,249 @@ function loadDashboardData(){
     .finally(() => {
       isLoadingDashboard = false;
     });
+}
+
+let isLoadingFraisFondation = false;
+function loadFraisFondationTotal(){
+  if (isLoadingFraisFondation) return;
+  isLoadingFraisFondation = true;
+  const target = document.getElementById('total-frais-fondation');
+  if (target) target.textContent = 'Chargement...';
+  fetch('/gestion-caisses/api/dashboard/frais-fondation-total/', {
+    headers: { 'X-CSRFToken': getCSRFToken() }
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('Erreur réseau');
+      return r.json();
+    })
+    .then(data => {
+      const total = (data && data.total_frais_fondation) ? data.total_frais_fondation : 0;
+      if (target) target.textContent = new Intl.NumberFormat('fr-FR').format(total) + ' FCFA';
+    })
+    .catch(e => {
+      console.error(e);
+      if (target) target.textContent = 'Erreur de chargement';
+    })
+    .finally(()=> { isLoadingFraisFondation = false; });
+}
+
+// ===================== Partage de fonds =====================
+let PARTAGE_EXERCICE_ID = null;
+async function initialiserPartageUI(){
+  // Initialiser sélecteur d'exercices pour la caisse sélectionnée
+  const exSelect = document.getElementById('partage-exercice-select');
+  const tbody = document.getElementById('partage-table-body');
+  const totaux = document.getElementById('partage-totaux');
+  const warningMsg = document.getElementById('partage-pdf-warning');
+  if (exSelect) {
+    exSelect.innerHTML = '<option value=\"\">Chargement...</option>';
+    exSelect.disabled = true;
+  }
+  if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aucune donnée</td></tr>';
+  if (totaux) totaux.textContent = 'Base: 0 | Intérêt total: 0';
+  if (warningMsg) warningMsg.classList.add('d-none');
+  PARTAGE_EXERCICE_ID = null;
+  try {
+    const caisseId = getSelectedPartageCaisseId();
+    if (!caisseId) {
+      if (exSelect) {
+        exSelect.innerHTML = '<option value=\"\">Aucune caisse sélectionnée</option>';
+        exSelect.disabled = true;
+      }
+      return;
+    }
+    await populatePartageExercices(caisseId);
+    // Select first suitable option if none selected
+    if (exSelect && !exSelect.value && exSelect.options.length > 0) {
+      exSelect.selectedIndex = 0;
+      exSelect.dispatchEvent(new Event('change'));
+    }
+  } catch(e){
+    console.error(e);
+    if (exSelect) {
+      exSelect.innerHTML = '<option value=\"\">Erreur de chargement</option>';
+      exSelect.disabled = true;
+    }
+  }
+}
+
+// Helpers sélection caisse (admin)
+function getSelectedPartageCaisseId(){
+  const sel = document.getElementById('partage-caisse-select');
+  if (sel && sel.value) return sel.value;
+  return (typeof USER_CAISE_ID !== 'undefined') ? USER_CAISE_ID : null;
+}
+
+let PARTAGE_CAISSES_LOADED = false;
+async function populatePartageCaisses(){
+  const sel = document.getElementById('partage-caisse-select');
+  if (!sel) return; // non-admins n'ont pas de select
+  if (PARTAGE_CAISSES_LOADED && sel.options.length > 0) return;
+  try {
+    sel.innerHTML = '<option value=\"\">Chargement...</option>';
+    const res = await fetch(`${API_BASE}/caisses/`);
+    const data = await res.json();
+    const list = (data.results || data) || [];
+    if (!Array.isArray(list) || list.length === 0){
+      sel.innerHTML = '<option value=\"\">Aucune caisse</option>';
+    } else {
+      sel.innerHTML = list.map(c => `<option value=\"${c.id}\">${c.nom_association}</option>`).join('');
+      if (typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+        sel.value = String(USER_CAISE_ID);
+      }
+      if (!sel.value && sel.options.length > 0) {
+        sel.value = sel.options[0].value;
+      }
+    }
+    if (!sel.onchange) {
+      sel.addEventListener('change', () => initialiserPartageUI());
+    }
+    PARTAGE_CAISSES_LOADED = true;
+    // Initialiser si une caisse est sélectionnée
+    if (sel.value) {
+      await initialiserPartageUI();
+    }
+  } catch (e) {
+    console.error(e);
+    sel.innerHTML = '<option value=\"\">Erreur de chargement</option>';
+  }
+}
+
+async function calculerPartage(){
+  const tbody = document.getElementById('partage-table-body');
+  const totaux = document.getElementById('partage-totaux');
+  if (!PARTAGE_EXERCICE_ID){
+    if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aucun exercice sélectionné.</td></tr>';
+    return;
+  }
+  if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Calcul en cours...</td></tr>';
+  try {
+    const url = `${API_BASE}/exercices-caisse/${PARTAGE_EXERCICE_ID}/partage-preview/`;
+    const res = await fetch(url);
+    if (res.status === 403) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Accès refusé à cette caisse.</td></tr>';
+      return;
+    }
+    if (!res.ok) {
+      let message = 'Erreur réseau';
+      try {
+        const err = await res.json();
+        message = err.detail || err.message || JSON.stringify(err);
+      } catch {
+        try { message = await res.text(); } catch {}
+      }
+      if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Erreur: ${message}</td></tr>`;
+      console.error('Erreur partage', message, res.status);
+      return;
+    }
+    const js = await res.json();
+    const rows = js.repartition || [];
+    if (totaux) {
+      const base = Number(js.total_base || 0);
+      const interet = Number(js.interet_total || 0);
+      totaux.textContent = `Base: ${fmt(base)} FCFA | Intérêt total: ${fmt(interet)} FCFA`;
+    }
+    if (!rows.length){
+      if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Aucune donnée</td></tr>';
+      return;
+    }
+    const html = rows.map(r => {
+      const p = Number(r.principal||0);
+      const i = Number(r.interet||0);
+      const t = Number(r.total||0);
+      return `<tr>
+        <td>${r.membre_nom || ''}</td>
+        <td class="text-end">${fmt(p)} FCFA</td>
+        <td class="text-end">${fmt(i)} FCFA</td>
+        <td class="text-end fw-bold">${fmt(t)} FCFA</td>
+      </tr>`;
+    }).join('');
+    if (tbody) tbody.innerHTML = html;
+  } catch(e){
+    console.error(e);
+    const msg = e && e.message ? e.message : 'Erreur lors du calcul';
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">${msg}</td></tr>`;
+  }
+}
+
+function telechargerPartagePdf(){
+  if (!PARTAGE_EXERCICE_ID){
+    showToast('Aucun exercice sélectionné pour le partage.', 'warning');
+    return;
+  }
+  window.open(`${API_BASE}/exercices-caisse/${PARTAGE_EXERCICE_ID}/partage-pdf/`, '_blank');
+}
+
+async function populatePartageExercices(caisseId){
+  const exSelect = document.getElementById('partage-exercice-select');
+  const btnPdf = document.getElementById('partage-btn-pdf');
+  if (!exSelect) return;
+  exSelect.disabled = true;
+  exSelect.innerHTML = '<option value=\"\">Chargement...</option>';
+  try {
+    const res = await fetch(`${API_BASE}/exercices-caisse/?caisse=${caisseId}`);
+    if (!res.ok) throw new Error('Erreur réseau');
+    const data = await res.json();
+    const list = (data.results || data) || [];
+    if (!Array.isArray(list) || list.length === 0){
+      exSelect.innerHTML = '<option value=\"\">Aucun exercice</option>';
+      if (btnPdf) btnPdf.disabled = true;
+      PARTAGE_EXERCICE_ID = null;
+      return;
+    }
+    // Sort by date_debut desc (backend already orders -date_debut)
+    exSelect.innerHTML = list.map(ex => {
+      const finTxt = ex.date_fin ? new Date(ex.date_fin).toLocaleDateString('fr-FR') : 'N/A';
+      const lbl = `${ex.date_debut} → ${finTxt} — ${ex.statut}`;
+      return `<option value=\"${ex.id}\" data-statut=\"${(ex.statut||'').toUpperCase()}\">${lbl}</option>`;
+    }).join('');
+    // Prefer CLOTURE if available
+    const idxCloture = list.findIndex(x => (x.statut||'').toUpperCase() === 'CLOTURE');
+    exSelect.selectedIndex = idxCloture >= 0 ? idxCloture : 0;
+    // Update globals and UI
+    PARTAGE_EXERCICE_ID = exSelect.value ? Number(exSelect.value) : null;
+    updatePartageActionsForStatut(exSelect.selectedOptions[0]?.getAttribute('data-statut'));
+    // Bind change if not already
+    if (!exSelect.onchange) {
+      exSelect.addEventListener('change', async () => {
+        const opt = exSelect.selectedOptions[0];
+        PARTAGE_EXERCICE_ID = exSelect.value ? Number(exSelect.value) : null;
+        updatePartageActionsForStatut(opt ? opt.getAttribute('data-statut') : null);
+        if (PARTAGE_EXERCICE_ID) {
+          try { await calculerPartage(); } catch(e){ console.error(e); }
+        }
+      });
+    }
+    // Trigger initial calculation
+    if (PARTAGE_EXERCICE_ID) {
+      await calculerPartage();
+    }
+  } catch (e){
+    console.error(e);
+    exSelect.innerHTML = '<option value=\"\">Erreur de chargement</option>';
+    PARTAGE_EXERCICE_ID = null;
+    if (btnPdf) btnPdf.disabled = true;
+  } finally {
+    exSelect.disabled = false;
+  }
+}
+
+function updatePartageActionsForStatut(statut){
+  const btnPdf = document.getElementById('partage-btn-pdf');
+  const warningMsg = document.getElementById('partage-pdf-warning');
+  const isEnCours = (statut || '').toUpperCase() === 'EN_COURS';
+  if (btnPdf) {
+    btnPdf.disabled = isEnCours || !PARTAGE_EXERCICE_ID;
+    btnPdf.title = isEnCours ? "PDF indisponible: l'exercice est en cours." : "";
+  }
+  // Afficher/masquer le message d'avertissement
+  if (warningMsg) {
+    if (isEnCours && PARTAGE_EXERCICE_ID) {
+      warningMsg.classList.remove('d-none');
+    } else {
+      warningMsg.classList.add('d-none');
+    }
+  }
 }
 
 // ===================== Salaires Agents =====================
@@ -5378,6 +5729,12 @@ async function telechargerPretsParMotifPDF(btn){
         <div class="modal-body">
           <form id="seanceForm">
             {% csrf_token %}
+            {% if user_role == 'Administrateur' %}
+            <div class="mb-3">
+              <label class="form-label required">Caisse</label>
+              <select id="seanceCaisse" class="form-select" required></select>
+            </div>
+            {% endif %}
             <div class="mb-3">
               <label class="form-label required">Date de la séance</label>
               <input id="seanceDate" name="date_seance" type="date" class="form-control" required />
@@ -5409,6 +5766,12 @@ async function telechargerPretsParMotifPDF(btn){
           <form id="cotisationForm">
             {% csrf_token %}
             <div class="row g-3">
+              {% if user_role == 'Administrateur' %}
+              <div class="col-12">
+                <label class="form-label required">Caisse</label>
+                <select id="cotisationCaisse" class="form-select" required></select>
+              </div>
+              {% endif %}
               <div class="col-12 col-md-6">
                 <label class="form-label required">Membre</label>
                 <select id="cotisationMembre" class="form-select" required></select>
@@ -5865,6 +6228,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Charger contexte utilisateur (récupère caisse_id)
     const ctx = await fetch(`${API_BASE}/user-context/`).then(r=>r.json());
     USER_CAISE_ID = ctx.caisse_id;
+    // Précharger caisses pour l'onglet Partage si présent (admin)
+    try { await populatePartageCaisses(); } catch(e) { console.warn(e); }
     // Précharger listes
     await refreshSeances();
     await refreshCotisations();
@@ -5880,6 +6245,8 @@ window.openSeanceCreateModal = function(e){
   try {
     const d = document.getElementById('seanceDate'); if(d) d.value = '';
     const t = document.getElementById('seanceTitre'); if(t) t.value = '';
+    const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+    if (isAdmin) { try { loadSeanceCaisses(); } catch(e){ console.warn(e); } }
   } catch {}
   const el = document.getElementById('seanceModal');
   if(el){
@@ -6042,12 +6409,15 @@ async function refreshSeances(){
 
 async function createSeance(){
   const err = document.getElementById('seanceError'); if(err){ err.style.display='none'; err.textContent=''; }
-  const dateVal = document.getElementById('seanceDate').value;
-  const titreVal = document.getElementById('seanceTitre').value;
-  if(!dateVal||!USER_CAISE_ID){ if(err){ err.textContent = 'La date est requise.'; err.style.display='block'; } showToast('Sélectionnez une date', 'warning'); return; }
+  const dateVal = (document.getElementById('seanceDate').value||'').trim();
+  const titreVal = (document.getElementById('seanceTitre').value||'').trim();
+  const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+  const selectedCaisseId = isAdmin ? Number(document.getElementById('seanceCaisse')?.value || 0) : Number(USER_CAISE_ID || 0);
+  if(!dateVal){ if(err){ err.textContent = 'La date est requise.'; err.style.display='block'; } showToast('Sélectionnez une date', 'warning'); return; }
+  if(isAdmin && !selectedCaisseId){ if(err){ err.textContent='Veuillez sélectionner une caisse.'; err.style.display='block'; } showToast('Sélectionnez une caisse','warning'); return; }
   const res = await fetch(`${API_BASE}/seances/`,{
     method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCSRFToken()},
-    body: JSON.stringify({ caisse: USER_CAISE_ID, date_seance: dateVal, titre: titreVal })
+    body: JSON.stringify({ caisse: selectedCaisseId, date_seance: dateVal, titre: titreVal })
   });
   if(!res.ok){ const t=await res.text(); if(err){ err.textContent='Erreur: '+t; err.style.display='block'; } showToast('Erreur création séance','error'); return; }
   showToast('Séance créée','success');
@@ -6069,68 +6439,123 @@ async function submitSeanceModal(){
   }
 }
 
-async function hydrateMembresSelect(){
+async function hydrateMembresSelect(caisseId = null){
   const sel = document.getElementById('cotisationMembre');
-  if(!sel||!USER_CAISE_ID) return;
-  const res = await fetch(`${API_BASE}/membres/?caisse=${USER_CAISE_ID}`);
+  const resolvedCaisseId = caisseId || (typeof USER_CAISE_ID !== 'undefined' ? USER_CAISE_ID : null);
+  if(!sel||!resolvedCaisseId) return;
+  const res = await fetch(`${API_BASE}/membres/?caisse=${resolvedCaisseId}`);
   const data = await res.json();
   sel.innerHTML = '<option value="">Sélectionner un membre</option>' + (data.results||data).map(m=>`<option value="${m.id}">${m.nom_complet} (${m.numero_carte_electeur})</option>`).join('');
 }
 
-async function hydrateSeancesSelect(){
+async function hydrateSeancesSelect(caisseId = null){
   const sel = document.getElementById('cotisationSeance');
-  if(!sel||!USER_CAISE_ID) return;
-  const res = await fetch(`${API_BASE}/seances/?caisse=${USER_CAISE_ID}`);
+  const resolvedCaisseId = caisseId || (typeof USER_CAISE_ID !== 'undefined' ? USER_CAISE_ID : null);
+  if(!sel||!resolvedCaisseId) return;
+  const res = await fetch(`${API_BASE}/seances/?caisse=${resolvedCaisseId}`);
   const data = await res.json();
   sel.innerHTML = '<option value="">Sélectionner une séance</option>' + (data.results||data).map(s=>`<option value="${s.id}">${s.date_seance} - ${s.titre||''}</option>`).join('');
 }
 
-async function refreshCotisations(){
-  if(!USER_CAISE_ID) return;
-  const res = await fetch(`${API_BASE}/cotisations/?caisse=${USER_CAISE_ID}`);
+async function loadCotisationCaisses(){
+  const sel = document.getElementById('cotisationCaisse');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  const res = await fetch(`${API_BASE}/caisses/`);
   const data = await res.json();
-  const list = document.getElementById('cotisations-list');
-  list.innerHTML = (data.results||data).map(c=>`
-    <div class="card mb-2"><div class="card-body d-flex justify-content-between align-items-center">
-      <div>
-        <div><strong>${c.membre_nom}</strong> — Séance: ${formatDateSafe(c.seance_date)}</div>
-        <div>
-          Tempon: <strong>${fmt(c.prix_tempon)} FCFA</strong> · Solidarité: <strong>${fmt(c.frais_solidarite)} FCFA</strong> · Fondation: <strong>${fmt(c.frais_fondation)} FCFA</strong> · Pénalité: <strong>${fmt(c.penalite_emprunt_retard)} FCFA</strong>
-        </div>
-      </div>
-      <div class="text-end">
-        <div class="fw-bold">Total: ${fmt(c.montant_total)} FCFA</div>
-        <div class="mt-2">
-          <button class="btn btn-sm btn-outline-primary me-2" onclick="openCotisationEditModal(${c.id})">Éditer</button>
-          <button class="btn btn-sm btn-outline-danger" onclick="deleteCotisation(${c.id})">Supprimer</button>
-        </div>
-        <small class="text-muted">${formatDateTimeSafe(c.date_cotisation)}</small>
-      </div>
-    </div></div>
-  `).join('');
+  sel.innerHTML = '<option value="">Sélectionner une caisse</option>' + (data.results||data).map(c=>`<option value="${c.id}">${c.nom_association}</option>`).join('');
+  sel.onchange = onCotisationCaisseChange;
+}
 
-  // Stats totales
-  const tot = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${USER_CAISE_ID}`).then(r=>r.json());
-  const t = tot.totaux || {};
-  setText('statTempon', fmt(t.prix_tempon||0)+' FCFA');
-  setText('statSolidarite', fmt(t.frais_solidarite||0)+' FCFA');
-  setText('statFondation', fmt(t.frais_fondation||0)+' FCFA');
-  setText('statPenalite', fmt(t.penalite_emprunt_retard||0)+' FCFA');
-  setText('statTotal', fmt(t.total||0)+' FCFA');
-  setText('statNombre', fmt(t.nombre||0));
-
-  // Série mensuelle
-  const serie = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${USER_CAISE_ID}&group_by=month`).then(r=>r.json());
-  const series = serie.series||[];
-  drawCotisationsChart(series.map(x=>x.mois), series.map(x=>x.total||0));
-
-  // Hydrater le sélecteur de stats membre une seule fois si vide
-  const statsSel = document.getElementById('statsMembre');
-  if(statsSel && statsSel.options.length === 0){
-    const mres = await fetch(`${API_BASE}/membres/?caisse=${USER_CAISE_ID}`);
-    const mdata = await mres.json();
-    statsSel.innerHTML = '<option value="">Sélectionner un membre</option>' + (mdata.results||mdata).map(m=>`<option value="${m.id}">${m.nom_complet} (${m.numero_carte_electeur})</option>`).join('');
+function onCotisationCaisseChange(){
+  const caisseId = Number(document.getElementById('cotisationCaisse')?.value||0);
+  if(!caisseId){ 
+    document.getElementById('cotisationMembre').innerHTML = '<option value=\"\">Sélectionner un membre</option>';
+    document.getElementById('cotisationSeance').innerHTML = '<option value=\"\">Sélectionner une séance</option>';
+    return; 
   }
+  hydrateMembresSelect(caisseId);
+  hydrateSeancesSelect(caisseId);
+}
+
+async function loadSeanceCaisses(){
+  const sel = document.getElementById('seanceCaisse');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  const res = await fetch(`${API_BASE}/caisses/`);
+  const data = await res.json();
+  sel.innerHTML = '<option value="">Sélectionner une caisse</option>' + (data.results||data).map(c=>`<option value="${c.id}">${c.nom_association}</option>`).join('');
+}
+
+async function refreshCotisations(){
+  // Charger la liste et les stats seulement si une caisse utilisateur est définie
+  if (typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+    const res = await fetch(`${API_BASE}/cotisations/?caisse=${USER_CAISE_ID}`);
+    const data = await res.json();
+    const list = document.getElementById('cotisations-list');
+    if (list) {
+      list.innerHTML = (data.results||data).map(c=>`
+        <div class="card mb-2"><div class="card-body d-flex justify-content-between align-items-center">
+          <div>
+            <div><strong>${c.membre_nom}</strong> — Séance: ${formatDateSafe(c.seance_date)}</div>
+            <div>
+              Tempon: <strong>${fmt(c.prix_tempon)} FCFA</strong> · Solidarité: <strong>${fmt(c.frais_solidarite)} FCFA</strong> · Fondation: <strong>${fmt(c.frais_fondation)} FCFA</strong> · Pénalité: <strong>${fmt(c.penalite_emprunt_retard)} FCFA</strong>
+            </div>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold">Total: ${fmt(c.montant_total)} FCFA</div>
+            <div class="mt-2">
+              <button class="btn btn-sm btn-outline-primary me-2" onclick="openCotisationEditModal(${c.id})">Éditer</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteCotisation(${c.id})">Supprimer</button>
+            </div>
+            <small class="text-muted">${formatDateTimeSafe(c.date_cotisation)}</small>
+          </div>
+        </div></div>
+      `).join('');
+    }
+
+    // Stats totales
+    const tot = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${USER_CAISE_ID}`).then(r=>r.json());
+    const t = tot.totaux || {};
+    setText('statTempon', fmt(t.prix_tempon||0)+' FCFA');
+    setText('statSolidarite', fmt(t.frais_solidarite||0)+' FCFA');
+    setText('statFondation', fmt(t.frais_fondation||0)+' FCFA');
+    setText('statPenalite', fmt(t.penalite_emprunt_retard||0)+' FCFA');
+    const totalSansFondation1 = (Number(t.total||0) - Number(t.frais_fondation||0)) || 0;
+    setText('statTotal', fmt(Math.max(0, totalSansFondation1))+' FCFA');
+    setText('statNombre', fmt(t.nombre||0));
+
+    // Série mensuelle
+    const serie = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${USER_CAISE_ID}&group_by=month`).then(r=>r.json());
+    const series = serie.series||[];
+    drawCotisationsChart(series.map(x=>x.mois), series.map(x=>x.total||0));
+  }
+
+  // Hydrater sélecteurs de stats (caisse pour admin, membre pour caisse sélectionnée)
+  try {
+    const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+    if (isAdmin) {
+      const caisseSel = document.getElementById('statsCaisse');
+      if (caisseSel && caisseSel.options.length === 0) {
+        caisseSel.innerHTML = '<option value=\"\">Sélectionner une caisse</option>';
+        const cres = await fetch(`${API_BASE}/caisses/`);
+        const cdata = await cres.json();
+        caisseSel.innerHTML = '<option value=\"\">Sélectionner une caisse</option>' + (cdata.results||cdata).map(c=>`<option value=\"${c.id}\">${c.nom_association}</option>`).join('');
+        caisseSel.onchange = onStatsCaisseChange;
+      }
+      // Ne pas hydrater les membres tant qu'une caisse de stats n'est pas choisie
+      const currentCaisseId = Number(document.getElementById('statsCaisse')?.value || 0);
+      if (currentCaisseId) {
+        await hydrateStatsMembre(currentCaisseId);
+      } else {
+        const statsSel = document.getElementById('statsMembre');
+        if (statsSel) statsSel.innerHTML = '<option value=\"\">Sélectionner un membre</option>';
+      }
+    } else {
+      // Non admin: hydrater directement avec la caisse de l'utilisateur
+      await hydrateStatsMembre(USER_CAISE_ID);
+    }
+  } catch(e){ console.warn(e); }
 }
 
 function fmt(x){ try{ return Number(x).toLocaleString('fr-FR'); }catch{ return x; } }
@@ -6164,6 +6589,59 @@ function drawCotisationsChart(labels, values){
 }
 
 let cotMemberChart;
+
+async function refreshTotalsForCaisse(caisseId){
+  try{
+    if(!caisseId) return;
+    const tot = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${caisseId}`).then(r=>r.json());
+    const t = tot.totaux || {};
+    setText('statTempon', fmt(t.prix_tempon||0)+' FCFA');
+    setText('statSolidarite', fmt(t.frais_solidarite||0)+' FCFA');
+    setText('statFondation', fmt(t.frais_fondation||0)+' FCFA');
+    setText('statPenalite', fmt(t.penalite_emprunt_retard||0)+' FCFA');
+    const totalSansFondation2 = (Number(t.total||0) - Number(t.frais_fondation||0)) || 0;
+    setText('statTotal', fmt(Math.max(0, totalSansFondation2))+' FCFA');
+    setText('statNombre', fmt(t.nombre||0));
+
+    const serie = await fetch(`${API_BASE}/cotisations-stats/caisse/?caisse_id=${caisseId}&group_by=month`).then(r=>r.json());
+    const series = serie.series||[];
+    drawCotisationsChart(series.map(x=>x.mois), series.map(x=>x.total||0));
+  }catch(e){
+    console.warn('Erreur refreshTotalsForCaisse', e);
+  }
+}
+
+async function hydrateStatsMembre(caisseId){
+  const statsSel = document.getElementById('statsMembre');
+  if(!statsSel || !caisseId) return;
+  statsSel.innerHTML = '<option value=\"\">Chargement...</option>';
+  const mres = await fetch(`${API_BASE}/membres/?caisse=${caisseId}`);
+  const mdata = await mres.json();
+  statsSel.innerHTML = '<option value=\"\">Sélectionner un membre</option>' + (mdata.results||mdata).map(m=>`<option value=\"${m.id}\">${m.nom_complet} (${m.numero_carte_electeur})</option>`).join('');
+}
+
+function onStatsCaisseChange(){
+  const caisseId = Number(document.getElementById('statsCaisse')?.value || 0);
+  if(!caisseId){
+    const statsSel = document.getElementById('statsMembre');
+    if (statsSel) statsSel.innerHTML = '<option value=\"\">Sélectionner un membre</option>';
+    // Réinitialiser la carte Totaux et le graphe si aucune caisse sélectionnée
+    try {
+      setText('statTempon', '0 FCFA');
+      setText('statSolidarite', '0 FCFA');
+      setText('statFondation', '0 FCFA');
+      setText('statPenalite', '0 FCFA');
+      setText('statTotal', '0 FCFA');
+      setText('statNombre', '0');
+      drawCotisationsChart([], []);
+    } catch(e){ console.warn(e); }
+    return;
+  }
+  hydrateStatsMembre(caisseId);
+  // Mettre à jour la carte Totaux et le graphe pour la caisse sélectionnée
+  refreshTotalsForCaisse(caisseId);
+}
+
 async function refreshMemberStats(){
   const id = document.getElementById('statsMembre').value;
   if(!id){ return; }
@@ -6200,11 +6678,14 @@ async function createCotisation(){
   const fraisFond = Number(document.getElementById('fraisFondation').value||0);
   const penalite = Number(document.getElementById('penaliteEmprunt').value||0);
   const description = (document.getElementById('cotisationDescription')?.value||'');
+  const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+  const selectedCaisseId = isAdmin ? Number(document.getElementById('cotisationCaisse')?.value || 0) : Number(USER_CAISE_ID || 0);
   if(!membreId||!seanceId){ if(err){ err.textContent='Veuillez sélectionner un membre et une séance.'; err.style.display='block'; } showToast('Sélectionnez membre et séance','warning'); return; }
+  if(isAdmin && !selectedCaisseId){ if(err){ err.textContent='Veuillez sélectionner une caisse.'; err.style.display='block'; } showToast('Sélectionnez une caisse','warning'); return; }
   const res = await fetch(`${API_BASE}/cotisations/`,{
     method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCSRFToken()},
     body: JSON.stringify({
-      membre_id: Number(membreId), caisse_id: USER_CAISE_ID, seance_id: Number(seanceId),
+      membre_id: Number(membreId), caisse_id: Number(selectedCaisseId), seance_id: Number(seanceId),
       prix_tempon: prixTempon, frais_solidarite: fraisSolid, frais_fondation: fraisFond, penalite_emprunt_retard: penalite,
       description: description
     })
@@ -6859,7 +7340,9 @@ async function loadCaisses() {
                     if (exerciceResponse.ok) {
                         const exerciceData = await exerciceResponse.json();
                         const exercices = exerciceData.results || exerciceData;
-                        exerciceActuel = exercices.find(e => e.statut === 'EN_COURS');
+                        // Prendre le dernier exercice (EN_COURS en priorité, sinon le plus récent)
+                        exerciceActuel = exercices.find(e => e.statut === 'EN_COURS') || 
+                                        (exercices.length > 0 ? exercices[0] : null);
                     }
                 } catch (e) {
                     console.log('Erreur chargement exercices spécifique:', e);
@@ -6868,11 +7351,15 @@ async function loadCaisses() {
                 // Si pas trouvé, essayer l'endpoint général des exercices
                 if (!exerciceActuel) {
                     try {
-                        const allExercicesResponse = await fetch(`${API_BASE}/exercices-caisse/`);
+                        const allExercicesResponse = await fetch(`${API_BASE}/exercices-caisse/?caisse=${caisse.id}`);
                         if (allExercicesResponse.ok) {
                             const allExercicesData = await allExercicesResponse.json();
                             const allExercices = allExercicesData.results || allExercicesData;
-                            exerciceActuel = allExercices.find(e => e.caisse === caisse.id && e.statut === 'EN_COURS');
+                            // Filtrer les exercices de cette caisse
+                            const exercicesCaisse = allExercices.filter(e => e.caisse === caisse.id || e.caisse_id === caisse.id);
+                            // Prendre le dernier exercice (EN_COURS en priorité, sinon le plus récent)
+                            exerciceActuel = exercicesCaisse.find(e => e.statut === 'EN_COURS') ||
+                                            (exercicesCaisse.length > 0 ? exercicesCaisse[0] : null);
                         }
                     } catch (e) {
                         console.log('Erreur chargement exercices général:', e);
@@ -7021,6 +7508,11 @@ function createCaisseCard(caisse) {
     if (caisse.exercice_actuel && (caisse.exercice_actuel.date_debut || caisse.exercice_actuel.date_fin)) {
         const dateDebut = formatDateFR(caisse.exercice_actuel.date_debut) || '-';
         const dateFin = formatDateFR(caisse.exercice_actuel.date_fin) || '-';
+        const statut = caisse.exercice_actuel.statut || 'EN_COURS';
+        const estCloture = statut === 'CLOTURE' || statut === 'CLOTURÉ';
+        const badgeClass = estCloture ? 'bg-secondary' : 'bg-success';
+        const badgeText = estCloture ? 'Clôturé' : 'En cours';
+        const badgeIcon = estCloture ? 'fa-check-circle' : 'fa-play';
         exerciceSection = `
             <div class="mb-3">
                 <div class="text-muted small mb-1">
@@ -7031,8 +7523,8 @@ function createCaisseCard(caisse) {
                         <div class="fw-bold small">${dateDebut}</div>
                         <div class="text-muted" style="font-size: 0.75rem;">au ${dateFin}</div>
                     </div>
-                    <span class="badge bg-success">
-                        <i class="fa fa-play me-1"></i>En cours
+                    <span class="badge ${badgeClass}">
+                        <i class="fa ${badgeIcon} me-1"></i>${badgeText}
                     </span>
                 </div>
             </div>
