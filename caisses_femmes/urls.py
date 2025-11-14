@@ -32,11 +32,13 @@ urlpatterns = [
     # Vrai admin déplacé sur /adminsecurelogin/
     path('adminsecurelogin/', admin.site.urls),
 
-    # Admin également accessible sous /gestion-caisses/admin/ pour correspondre aux liens attendus
-    path('gestion-caisses/admin/', admin.site.urls),
-
-    # Application principale avec frontend
+    # Application principale avec frontend (doit être AVANT l'admin pour capturer les URLs personnalisées)
+    # Les URLs personnalisées comme /gestion-caisses/admin/rapport-... doivent être capturées ici
     path('gestion-caisses/', include('gestion_caisses.urls', namespace='gestion_caisses')),
+
+    # Admin également accessible sous /gestion-caisses/admin/ pour correspondre aux liens attendus
+    # Cette route doit être APRÈS l'inclusion de gestion_caisses.urls pour ne pas capturer les URLs personnalisées
+    path('gestion-caisses/admin/', admin.site.urls),
 
     # Service Worker à la racine pour PWA (scope global)
     path('sw.js', TemplateView.as_view(template_name='pwa/sw.js', content_type='application/javascript'), name='service_worker'),

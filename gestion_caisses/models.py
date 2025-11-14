@@ -2312,4 +2312,20 @@ class FichePaie(models.Model):
             return False
 
 
+# Modèle proxy pour le lien "FKM Board" dans l'admin
+class FKMBoard(FichePaie):
+    """Modèle proxy pour afficher le lien FKM Board dans le menu admin"""
+    
+    class Meta:
+        # Utiliser un préfixe "0" pour apparaître avant "Agents" dans le menu admin (ordre alphabétique)
+        # Le préfixe "0" garantit que "FKM Board" apparaît avant "Agents" (0 vient avant A)
+        verbose_name = "0 FKM Board"
+        verbose_name_plural = "0 FKM Board"
+        proxy = True
+        app_label = 'gestion_caisses'
+    
+    def __str__(self):
+        return "FKM Board"
+
+
 

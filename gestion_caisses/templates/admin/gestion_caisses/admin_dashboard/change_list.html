@@ -589,60 +589,84 @@
     </div>
 
     <!-- Modal pour les rapports -->
-    <div id="rapportModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>📊 Rapport en Cours de Génération</h2>
+    <div id="rapportModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+        <div class="modal-content" style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            <span class="close" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 20px;">&times;</span>
+            <h2 style="margin-top: 0;">📊 Rapport en Cours de Génération</h2>
             <div id="rapportContent">
                 <p>Génération du rapport en cours...</p>
-                <div class="progress-bar">
-                    <div class="progress-fill"></div>
+                <div class="progress-bar" style="width: 100%; background-color: #f0f0f0; border-radius: 4px; height: 20px; margin-top: 10px;">
+                    <div class="progress-fill" style="width: 0%; background-color: #007bff; height: 100%; border-radius: 4px; animation: progress 2s ease-in-out forwards;"></div>
                 </div>
             </div>
         </div>
     </div>
+    
+    <style>
+        @keyframes progress {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
 
     <script>
-        // Fonctions pour les actions rapides
+        // Fonctions pour les actions rapides - Rapports
         function genererRapportGeneral() {
-            window.open('/gestion-caisses/admin/rapport-general/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/rapport-general/?format=${format}`, '_blank');
         }
         
         function genererRapportFinancier() {
-            window.open('/gestion-caisses/admin/rapport-financier/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/rapport-financier/?format=${format}`, '_blank');
         }
         
         function genererRapportPrets() {
-            window.open('/gestion-caisses/admin/rapport-prets/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/rapport-prets/?format=${format}`, '_blank');
         }
         
         function genererRapportMembres() {
-            window.open('/gestion-caisses/admin/rapport-membres/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/rapport-membres/?format=${format}`, '_blank');
         }
         
         function genererRapportTransferts() {
-            window.open('/gestion-caisses/admin/rapport-transferts/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/rapport-transferts/?format=${format}`, '_blank');
         }
         
-        // Fonctions pour les impressions
+        // Fonctions pour les impressions - États
         function imprimerEtatGeneral() {
-            window.open('/gestion-caisses/admin/etat-general/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/etat-general/?format=${format}`, '_blank');
         }
         
         function imprimerEtatFinancier() {
-            window.open('/gestion-caisses/admin/etat-financier/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/etat-financier/?format=${format}`, '_blank');
         }
         
         function imprimerEtatPrets() {
-            window.open('/gestion-caisses/admin/etat-prets/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/etat-prets/?format=${format}`, '_blank');
         }
         
         function imprimerEtatCaisses() {
-            window.open('/gestion-caisses/admin/etat-caisses/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/etat-caisses/?format=${format}`, '_blank');
         }
         
         function imprimerEtatTransferts() {
-            window.open('/gestion-caisses/admin/etat-transferts/?format=pdf', '_blank');
+            const format = 'pdf';
+            window.open(`/gestion-caisses/admin/etat-transferts/?format=${format}`, '_blank');
         }
         
         // Fonctions pour la gestion des fonds
@@ -668,25 +692,25 @@
         
         // Fonctions pour la maintenance
         function synchroniserSysteme() {
-            if (confirm('Voulez-vous synchroniser le système ?')) {
+            if (confirm('Voulez-vous synchroniser le système ? Cette action peut prendre quelques instants.')) {
                 window.location.href = '/gestion-caisses/admin/synchroniser-systeme/';
             }
         }
         
         function verifierIntegrite() {
-            if (confirm('Voulez-vous vérifier l\'intégrité du système ?')) {
+            if (confirm('Voulez-vous vérifier l\'intégrité du système ? Cette action peut prendre quelques instants.')) {
                 window.location.href = '/gestion-caisses/admin/verifier-integrite/';
             }
         }
         
         function nettoyerDonnees() {
-            if (confirm('Voulez-vous nettoyer les données du système ?')) {
+            if (confirm('ATTENTION: Cette action va nettoyer les données temporaires du système. Êtes-vous sûr de vouloir continuer ?')) {
                 window.location.href = '/gestion-caisses/admin/nettoyer-donnees/';
             }
         }
         
         function sauvegarderSysteme() {
-            if (confirm('Voulez-vous sauvegarder le système ?')) {
+            if (confirm('Voulez-vous sauvegarder le système ? Cette action peut prendre quelques instants.')) {
                 window.location.href = '/gestion-caisses/admin/sauvegarder-systeme/';
             }
         }
@@ -697,33 +721,146 @@
         
         // Fonctions pour les rapports personnalisés
         function genererRapportPersonnalise() {
-            const typeRapport = document.getElementById('typeRapport').value;
-            const caisse = document.getElementById('caisseSelect').value;
-            const dateDebut = document.getElementById('dateDebut').value;
-            const dateFin = document.getElementById('dateFin').value;
-            const format = document.getElementById('formatRapport').value;
-            
-            // Afficher le modal
-            document.getElementById('rapportModal').style.display = 'block';
-            
-            // Simuler la génération du rapport
-            setTimeout(() => {
-                const url = `/gestion-caisses/admin/rapport-${typeRapport}/?format=${format}&caisse=${caisse}&date_debut=${dateDebut}&date_fin=${dateFin}`;
-                window.open(url, '_blank');
-                document.getElementById('rapportModal').style.display = 'none';
-            }, 2000);
+            try {
+                const typeRapport = document.getElementById('typeRapport').value;
+                const caisse = document.getElementById('caisseSelect').value;
+                const dateDebut = document.getElementById('dateDebut').value;
+                const dateFin = document.getElementById('dateFin').value;
+                const format = document.getElementById('formatRapport').value;
+                
+                if (!typeRapport) {
+                    alert('Veuillez sélectionner un type de rapport');
+                    return;
+                }
+                
+                // Construire l'URL selon le format
+                let url = '';
+                if (format === 'pdf') {
+                    url = `/gestion-caisses/admin/rapport-${typeRapport}/?format=pdf`;
+                } else if (format === 'excel') {
+                    url = `/gestion-caisses/rapport/export-excel/${typeRapport}/`;
+                } else if (format === 'csv') {
+                    url = `/gestion-caisses/rapport/export-csv/${typeRapport}/`;
+                } else {
+                    url = `/gestion-caisses/admin/rapport-${typeRapport}/`;
+                }
+                
+                // Ajouter les paramètres de filtre
+                const params = new URLSearchParams();
+                if (caisse) params.append('caisse', caisse);
+                if (dateDebut) params.append('date_debut', dateDebut);
+                if (dateFin) params.append('date_fin', dateFin);
+                if (format && format !== 'excel' && format !== 'csv') {
+                    params.append('format', format);
+                }
+                
+                if (params.toString()) {
+                    url += (url.includes('?') ? '&' : '?') + params.toString();
+                }
+                
+                // Afficher le modal
+                const modal = document.getElementById('rapportModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                }
+                
+                // Générer le rapport
+                setTimeout(() => {
+                    window.open(url, '_blank');
+                    if (modal) {
+                        modal.style.display = 'none';
+                    }
+                }, 1000);
+            } catch (error) {
+                console.error('Erreur lors de la génération du rapport:', error);
+                alert('Une erreur est survenue lors de la génération du rapport. Veuillez réessayer.');
+            }
         }
         
         function previsualiserRapport() {
-            alert('Fonctionnalité de prévisualisation en cours de développement');
+            try {
+                const typeRapport = document.getElementById('typeRapport').value;
+                const caisse = document.getElementById('caisseSelect').value;
+                const dateDebut = document.getElementById('dateDebut').value;
+                const dateFin = document.getElementById('dateFin').value;
+                
+                if (!typeRapport) {
+                    alert('Veuillez sélectionner un type de rapport');
+                    return;
+                }
+                
+                const params = new URLSearchParams();
+                if (caisse) params.append('caisse', caisse);
+                if (dateDebut) params.append('date_debut', dateDebut);
+                if (dateFin) params.append('date_fin', dateFin);
+                params.append('format', 'html');
+                
+                const url = `/gestion-caisses/admin/rapport-${typeRapport}/?${params.toString()}`;
+                window.open(url, '_blank');
+            } catch (error) {
+                console.error('Erreur lors de la prévisualisation du rapport:', error);
+                alert('Une erreur est survenue lors de la prévisualisation du rapport. Veuillez réessayer.');
+            }
         }
         
         function exporterDonnees() {
-            alert('Fonctionnalité d\'export en cours de développement');
+            try {
+                const typeRapport = document.getElementById('typeRapport').value;
+                const format = document.getElementById('formatRapport').value;
+                const caisse = document.getElementById('caisseSelect').value;
+                const dateDebut = document.getElementById('dateDebut').value;
+                const dateFin = document.getElementById('dateFin').value;
+                
+                if (!typeRapport) {
+                    alert('Veuillez sélectionner un type de rapport');
+                    return;
+                }
+                
+                let url = '';
+                if (format === 'excel') {
+                    url = `/gestion-caisses/rapport/export-excel/${typeRapport}/`;
+                } else if (format === 'csv') {
+                    url = `/gestion-caisses/rapport/export-csv/${typeRapport}/`;
+                } else {
+                    alert('Veuillez sélectionner Excel ou CSV comme format d\'export');
+                    return;
+                }
+                
+                const params = new URLSearchParams();
+                if (caisse) params.append('caisse', caisse);
+                if (dateDebut) params.append('date_debut', dateDebut);
+                if (dateFin) params.append('date_fin', dateFin);
+                
+                if (params.toString()) {
+                    url += '?' + params.toString();
+                }
+                
+                // Afficher un message de chargement
+                const modal = document.getElementById('rapportModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                }
+                
+                // Ouvrir l'URL pour télécharger le fichier
+                const link = document.createElement('a');
+                link.href = url;
+                link.target = '_blank';
+                link.click();
+                
+                // Fermer le modal après un court délai
+                setTimeout(() => {
+                    if (modal) {
+                        modal.style.display = 'none';
+                    }
+                }, 1500);
+            } catch (error) {
+                console.error('Erreur lors de l\'export des données:', error);
+                alert('Une erreur est survenue lors de l\'export des données. Veuillez réessayer.');
+            }
         }
         
         function planifierRapport() {
-            alert('Fonctionnalité de planification en cours de développement');
+            alert('Fonctionnalité de planification des rapports en cours de développement.\n\nCette fonctionnalité permettra de planifier la génération automatique de rapports à des dates et heures spécifiques.');
         }
         
         // Fermer le modal

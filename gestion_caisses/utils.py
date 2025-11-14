@@ -2795,6 +2795,7 @@ def generate_rapport_pdf(rapport):
         'prets': "RAPPORT DES PRÊTS",
         'membres': "RAPPORT DES MEMBRES",
         'echeances': "RAPPORT DES ÉCHÉANCES",
+        'depenses': "RAPPORT DES DÉPENSES",
     }
     # Ajouter libellés pour les rapports de cotisations afin d'éviter un double en-tête plus bas
     if getattr(rapport, 'type_rapport', '') in ('cotisations_general', 'cotisations_par_membre'):
@@ -2956,20 +2957,39 @@ def generate_rapport_pdf(rapport):
         items = (rapport.donnees or {}).get('items', []) if hasattr(rapport, 'donnees') else (rapport.items or [])
         totaux = (rapport.donnees or {}).get('totaux', {}) if hasattr(rapport, 'donnees') else {}
 
-        rows = [['Date', 'Objectif', 'Montant', 'Observation']]
+        # Si caisse est None, c'est un admin qui voit toutes les caisses -> ajouter colonne Caisse
+        is_admin_view = caisse is None
+        
+        if is_admin_view:
+            rows = [['Date', 'Caisse', 'Objectif', 'Montant', 'Observation']]
+            col_widths = [1.0*inch, 1.5*inch, 2.5*inch, 1.0*inch, 1.5*inch]
+        else:
+            rows = [['Date', 'Objectif', 'Montant', 'Observation']]
+            col_widths = [1.2*inch, 3.4*inch, 1.0*inch, 1.9*inch]
+        
         for it in items:
             try:
                 montant = float(it.get('montant', 0) or 0)
             except Exception:
                 montant = 0
-            rows.append([
-                it.get('date', ''),
-                (it.get('objectif', '') or '')[:80],
-                f"{montant:,.0f}".replace(',', ' '),
-                (it.get('observation', '') or '')[:80],
-            ])
+            
+            if is_admin_view:
+                rows.append([
+                    it.get('date', ''),
+                    (it.get('caisse_nom', '') or '')[:40],
+                    (it.get('objectif', '') or '')[:60],
+                    f"{montant:,.0f}".replace(',', ' '),
+                    (it.get('observation', '') or '')[:60],
+                ])
+            else:
+                rows.append([
+                    it.get('date', ''),
+                    (it.get('objectif', '') or '')[:80],
+                    f"{montant:,.0f}".replace(',', ' '),
+                    (it.get('observation', '') or '')[:80],
+                ])
 
-        t = RLTable(rows, colWidths=[1.2*inch, 3.4*inch, 1.0*inch, 1.9*inch], repeatRows=1)
+        t = RLTable(rows, colWidths=col_widths, repeatRows=1)
         t.setStyle(RLTableStyle([
             ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#E8F4FD')),
             ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),

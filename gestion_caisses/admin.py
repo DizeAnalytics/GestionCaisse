@@ -24,7 +24,7 @@ from .models import (
     VirementBancaire, AuditLog, Notification, PresidentGeneral, Parametre,
     CaisseGenerale, CaisseGeneraleMouvement,
     TransfertCaisse, AdminDashboard,
-    SalaireAgent, FichePaie, ExerciceCaisse
+    SalaireAgent, FichePaie, ExerciceCaisse, FKMBoard
 )
 from .models import SeanceReunion, Cotisation, Depense, RapportActivite
 from .utils import create_credentials_pdf_response, create_agent_credentials_pdf_response
@@ -1451,6 +1451,37 @@ class PresidentGeneralAdmin(DatePickerAdminMixin, admin.ModelAdmin):
             # Désactiver tous les autres présidents généraux
             PresidentGeneral.objects.exclude(pk=obj.pk).update(statut='INACTIF')
         super().save_model(request, obj, form, change)
+
+
+@admin.register(FKMBoard)
+class FKMBoardAdmin(admin.ModelAdmin):
+    """Admin pour le lien FKM Board qui redirige vers le tableau de bord"""
+    
+    def has_add_permission(self, request):
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
+    
+    def changelist_view(self, request, extra_context=None):
+        """Redirige vers le tableau de bord FKM"""
+        from django.shortcuts import redirect
+        return redirect('/gestion-caisses/admin-frontend/')
+    
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_authenticated
+    
+    def get_model_perms(self, request):
+        """Retourne les permissions du modèle"""
+        return {
+            'add': False,
+            'change': False,
+            'delete': False,
+            'view': request.user.is_authenticated,
+        }
 
 
 @admin.register(Agent)

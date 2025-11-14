@@ -2460,23 +2460,43 @@ def rapports_caisse_api(request):
                 }
             }
         elif type_rapport == 'depenses':
-            depenses = Depense.objects.filter(caisse=caisse)
+            # Pour les admins: permettre de filtrer par caisse_id ou afficher toutes les dépenses
+            if is_admin:
+                caisse_id_param = request.GET.get('caisse_id')
+                if caisse_id_param:
+                    try:
+                        caisse = Caisse.objects.get(id=caisse_id_param)
+                        depenses = Depense.objects.filter(caisse=caisse)
+                        caisse_info = caisse
+                    except Caisse.DoesNotExist:
+                        return JsonResponse({'error': 'Caisse introuvable'}, status=404)
+                else:
+                    # Admin sans caisse_id => toutes les dépenses
+                    depenses = Depense.objects.all()
+                    caisse_info = None
+            else:
+                # Non-admin: toujours filtrer par sa caisse
+                depenses = Depense.objects.filter(caisse=caisse)
+                caisse_info = caisse
+            
             if date_debut:
                 depenses = depenses.filter(datedepense__gte=date_debut)
             if date_fin:
                 depenses = depenses.filter(datedepense__lte=date_fin)
+            
             items = [
                 {
                     'date': d.datedepense.strftime('%d/%m/%Y') if d.datedepense else '',
                     'objectif': d.Objectifdepense or '',
                     'montant': float(d.montantdepense or 0),
-                    'observation': d.observation or ''
+                    'observation': d.observation or '',
+                    'caisse_nom': d.caisse.nom_association if d.caisse else ''  # Ajouter le nom de la caisse pour les admins
                 }
-                for d in depenses.order_by('-datedepense', '-date_creation')
+                for d in depenses.select_related('caisse').order_by('-datedepense', '-date_creation')
             ]
             rapport = {
                 'type': 'depenses',
-                'caisse': caisse,  # Passer l'objet caisse complet pour le PDF
+                'caisse': caisse_info,  # Passer l'objet caisse complet pour le PDF (None si toutes les caisses)
                 'periode': {'debut': date_debut.strftime('%d/%m/%Y') if date_debut else '', 'fin': date_fin.strftime('%d/%m/%Y') if date_fin else ''},
                 'items': items,
                 'totaux': {
@@ -3625,62 +3645,61 @@ def rapport_general_view(request):
     if not request.user.is_superuser:
         return redirect('gestion_caisses:dashboard')
     
-    # Récupérer les données pour le rapport
-    from django.db.models import Sum, Count, Q
+    # Récupérer les paramètres de la requête
+    format_output = request.GET.get('format', 'html')
+    caisse_id = request.GET.get('caisse')
+    date_debut_str = request.GET.get('date_debut')
+    date_fin_str = request.GET.get('date_fin')
+    
+    # Convertir les dates
+    date_debut = None
+    date_fin = None
+    if date_debut_str:
+        try:
+            date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    if date_fin_str:
+        try:
+            date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    
+    # Utiliser la fonction de génération globale
+    data = generer_rapport_general_global(date_debut, date_fin)
+    
+    # Si format PDF demandé
+    if format_output == 'pdf':
+        # Créer un rapport temporaire pour le PDF
+        rapport = RapportActivite(
+            type_rapport='general',
+            caisse_id=caisse_id if caisse_id else None,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            statut='EN_ATTENTE',
+            genere_par=request.user,
+            donnees=data
+        )
+        try:
+            pdf_content = generate_rapport_pdf(rapport)
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="rapport_general_{date_debut or "all"}_{date_fin or "all"}.pdf"'
+            return response
+        except Exception as e:
+            messages.error(request, f'Erreur lors de la génération du PDF: {str(e)}')
+            # Continuer avec le rendu HTML en cas d'erreur
+    
+    # Préparer le contexte pour le template HTML
     from django.utils import timezone
-    from datetime import timedelta
-    
     today = timezone.now().date()
-    last_month = today - timedelta(days=30)
-    
-    # Statistiques générales
-    total_caisses = Caisse.objects.count()
-    total_membres = Membre.objects.count()
-    total_prets = Pret.objects.count()
-    total_fonds = Caisse.objects.aggregate(total=Sum('fond_disponible'))['total'] or 0
-    
-    # Statistiques des prêts
-    prets_en_cours = Pret.objects.filter(statut='EN_COURS').count()
-    prets_rembourses = Pret.objects.filter(statut='REMBOURSE').count()
-    prets_valides = Pret.objects.filter(statut='VALIDE').count()
-    
-    # Montants
-    total_montant_prets = Pret.objects.aggregate(total=Sum('montant_accord'))['total'] or 0
-    total_montant_rembourse = Pret.objects.aggregate(total=Sum('montant_rembourse'))['total'] or 0
-    
-    # Caisse générale
-    try:
-        caisse_generale = CaisseGenerale.get_instance()
-        solde_reserve = caisse_generale.solde_reserve
-        solde_systeme = caisse_generale.solde_systeme
-    except:
-        solde_reserve = 0
-        solde_systeme = 0
-    
-    # Transferts
-    try:
-        total_transferts = TransfertCaisse.objects.count()
-        transferts_valides = TransfertCaisse.objects.filter(statut='VALIDE').count()
-    except:
-        total_transferts = 0
-        transferts_valides = 0
     
     context = {
         'user': request.user,
         'date_generation': today,
-        'total_caisses': total_caisses,
-        'total_membres': total_membres,
-        'total_prets': total_prets,
-        'total_fonds': total_fonds,
-        'prets_en_cours': prets_en_cours,
-        'prets_rembourses': prets_rembourses,
-        'prets_valides': prets_valides,
-        'total_montant_prets': total_montant_prets,
-        'total_montant_rembourse': total_montant_rembourse,
-        'solde_reserve': solde_reserve,
-        'solde_systeme': solde_systeme,
-        'total_transferts': total_transferts,
-        'transferts_valides': transferts_valides,
+        'data': data,
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'format': format_output,
     }
     
     return render(request, 'gestion_caisses/rapports/rapport_general.html', context)
@@ -4216,30 +4235,6 @@ def export_rapport_pdf_view(request, type_rapport):
     return HttpResponse("Export PDF en cours de développement")
 
 
-@login_required
-def export_rapport_excel_view(request, type_rapport):
-    """Vue pour exporter un rapport en Excel"""
-    if not request.user.is_superuser:
-        return redirect('gestion_caisses:dashboard')
-    
-    # Logique d'export Excel selon le type de rapport
-    # À implémenter avec openpyxl ou xlsxwriter
-    
-    return HttpResponse("Export Excel en cours de développement")
-
-
-@login_required
-def export_rapport_csv_view(request, type_rapport):
-    """Vue pour exporter un rapport en CSV"""
-    if not request.user.is_superuser:
-        return redirect('gestion_caisses:dashboard')
-    
-    # Logique d'export CSV selon le type de rapport
-    # À implémenter avec le module csv de Python
-    
-    return HttpResponse("Export CSV en cours de développement")
-
-
 # ============================================================================
 # VUES POUR MAINTENANCE ET SYSTÈME
 # ============================================================================
@@ -4470,70 +4465,234 @@ def lister_caisses_rapport(request):
 @login_required
 @user_passes_test(lambda u: u.is_staff)
 def export_rapport_excel_view(request, type_rapport):
-    """Vue pour exporter un rapport en Excel"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    """Vue pour exporter un rapport en Excel - Accepte GET avec paramètres de requête"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
     
     try:
-        # Récupérer les données JSON
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        # Récupérer les paramètres de la requête (GET ou POST)
+        if request.method == 'GET':
+            caisse_id = request.GET.get('caisse')
+            date_debut_str = request.GET.get('date_debut')
+            date_fin_str = request.GET.get('date_fin')
+            notes = request.GET.get('notes', '')
+        else:
+            # Support POST avec JSON pour compatibilité
+            try:
+                data = json.loads(request.body)
+                caisse_id = data.get('caisse')
+                date_debut_str = data.get('date_debut')
+                date_fin_str = data.get('date_fin')
+                notes = data.get('notes', '')
+            except json.JSONDecodeError:
+                return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        
+        # Convertir les dates
+        date_debut = None
+        date_fin = None
+        if date_debut_str:
+            try:
+                date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if date_fin_str:
+            try:
+                date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        
+        # Récupérer la caisse si spécifiée
+        caisse = None
+        if caisse_id:
+            try:
+                caisse = Caisse.objects.get(pk=caisse_id)
+            except Caisse.DoesNotExist:
+                pass
         
         # Créer un rapport temporaire pour l'export
         rapport = RapportActivite(
             type_rapport=type_rapport,
-            caisse_id=data.get('caisse'),
-            date_debut=datetime.strptime(data.get('date_debut'), '%Y-%m-%d').date() if data.get('date_debut') else None,
-            date_fin=datetime.strptime(data.get('date_fin'), '%Y-%m-%d').date() if data.get('date_fin') else None,
-            notes=data.get('notes', ''),
-            statut='EN_ATTENTE'
+            caisse=caisse,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            notes=notes,
+            statut='EN_ATTENTE',
+            genere_par=request.user
         )
+        
+        # Générer les données du rapport selon le type
+        if type_rapport == 'general':
+            rapport.donnees = generer_rapport_general_global(date_debut, date_fin)
+        elif type_rapport == 'financier':
+            rapport.donnees = generer_rapport_financier_global(date_debut, date_fin)
+        elif type_rapport == 'prets':
+            rapport.donnees = generer_rapport_prets_global(date_debut, date_fin)
+        elif type_rapport == 'membres':
+            rapport.donnees = generer_rapport_membres_global(date_debut, date_fin)
+        elif type_rapport == 'caisses':
+            # Générer les données des caisses
+            from django.db.models import Sum, Count, Q
+            caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+                total_membres=Count('membres'),
+                total_prets=Count('prets'),
+                total_montant_prets=Sum('prets__montant_accord'),
+                total_montant_rembourse=Sum('prets__montant_rembourse')
+            ).order_by('nom_association')
+            rapport.donnees = {
+                'caisses': [
+                    {
+                        'nom': c.nom_association,
+                        'code': c.code,
+                        'membres': c.total_membres,
+                        'prets': c.total_prets,
+                        'montant_prets': float(c.total_montant_prets or 0),
+                        'montant_rembourse': float(c.total_montant_rembourse or 0),
+                    }
+                    for c in caisses
+                ]
+            }
+        elif type_rapport == 'transferts':
+            transferts = TransfertCaisse.objects.select_related(
+                'caisse_source', 'caisse_destination'
+            ).order_by('-date_transfert')
+            rapport.donnees = {
+                'transferts': [
+                    {
+                        'type': t.type_transfert,
+                        'montant': float(t.montant),
+                        'source': t.caisse_source.nom_association if t.caisse_source else '',
+                        'destination': t.caisse_destination.nom_association if t.caisse_destination else '',
+                        'statut': t.statut,
+                        'date': str(t.date_transfert),
+                    }
+                    for t in transferts
+                ]
+            }
         
         # Générer l'export Excel
         response = export_rapport_excel(rapport)
         return response
         
     except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': f'Erreur lors de l\'export Excel: {str(e)}'
-        }, status=500)
+        import traceback
+        traceback.print_exc()
+        return HttpResponse(f'Erreur lors de l\'export Excel: {str(e)}', status=500)
 
 @login_required
 @user_passes_test(lambda u: u.is_staff)
 def export_rapport_csv_view(request, type_rapport):
-    """Vue pour exporter un rapport en CSV"""
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'message': 'Méthode non autorisée'}, status=405)
+    """Vue pour exporter un rapport en CSV - Accepte GET avec paramètres de requête"""
+    if not request.user.is_superuser:
+        return redirect('gestion_caisses:dashboard')
     
     try:
-        # Récupérer les données JSON
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        # Récupérer les paramètres de la requête (GET ou POST)
+        if request.method == 'GET':
+            caisse_id = request.GET.get('caisse')
+            date_debut_str = request.GET.get('date_debut')
+            date_fin_str = request.GET.get('date_fin')
+            notes = request.GET.get('notes', '')
+        else:
+            # Support POST avec JSON pour compatibilité
+            try:
+                data = json.loads(request.body)
+                caisse_id = data.get('caisse')
+                date_debut_str = data.get('date_debut')
+                date_fin_str = data.get('date_fin')
+                notes = data.get('notes', '')
+            except json.JSONDecodeError:
+                return JsonResponse({'success': False, 'message': 'Données JSON invalides'}, status=400)
+        
+        # Convertir les dates
+        date_debut = None
+        date_fin = None
+        if date_debut_str:
+            try:
+                date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if date_fin_str:
+            try:
+                date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        
+        # Récupérer la caisse si spécifiée
+        caisse = None
+        if caisse_id:
+            try:
+                caisse = Caisse.objects.get(pk=caisse_id)
+            except Caisse.DoesNotExist:
+                pass
         
         # Créer un rapport temporaire pour l'export
         rapport = RapportActivite(
             type_rapport=type_rapport,
-            caisse_id=data.get('caisse'),
-            date_debut=datetime.strptime(data.get('date_debut'), '%Y-%m-%d').date() if data.get('date_debut') else None,
-            date_fin=datetime.strptime(data.get('date_fin'), '%Y-%m-%d').date() if data.get('date_fin') else None,
-            notes=data.get('notes', ''),
-            statut='EN_ATTENTE'
+            caisse=caisse,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            notes=notes,
+            statut='EN_ATTENTE',
+            genere_par=request.user
         )
+        
+        # Générer les données du rapport selon le type
+        if type_rapport == 'general':
+            rapport.donnees = generer_rapport_general_global(date_debut, date_fin)
+        elif type_rapport == 'financier':
+            rapport.donnees = generer_rapport_financier_global(date_debut, date_fin)
+        elif type_rapport == 'prets':
+            rapport.donnees = generer_rapport_prets_global(date_debut, date_fin)
+        elif type_rapport == 'membres':
+            rapport.donnees = generer_rapport_membres_global(date_debut, date_fin)
+        elif type_rapport == 'caisses':
+            # Générer les données des caisses
+            from django.db.models import Sum, Count, Q
+            caisses = Caisse.objects.filter(statut='ACTIVE').annotate(
+                total_membres=Count('membres'),
+                total_prets=Count('prets'),
+                total_montant_prets=Sum('prets__montant_accord'),
+                total_montant_rembourse=Sum('prets__montant_rembourse')
+            ).order_by('nom_association')
+            rapport.donnees = {
+                'caisses': [
+                    {
+                        'nom': c.nom_association,
+                        'code': c.code,
+                        'membres': c.total_membres,
+                        'prets': c.total_prets,
+                        'montant_prets': float(c.total_montant_prets or 0),
+                        'montant_rembourse': float(c.total_montant_rembourse or 0),
+                    }
+                    for c in caisses
+                ]
+            }
+        elif type_rapport == 'transferts':
+            transferts = TransfertCaisse.objects.select_related(
+                'caisse_source', 'caisse_destination'
+            ).order_by('-date_transfert')
+            rapport.donnees = {
+                'transferts': [
+                    {
+                        'type': t.type_transfert,
+                        'montant': float(t.montant),
+                        'source': t.caisse_source.nom_association if t.caisse_source else '',
+                        'destination': t.caisse_destination.nom_association if t.caisse_destination else '',
+                        'statut': t.statut,
+                        'date': str(t.date_transfert),
+                    }
+                    for t in transferts
+                ]
+            }
         
         # Générer l'export CSV
         response = export_rapport_csv(rapport)
         return response
         
     except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': f'Erreur lors de l\'export CSV: {str(e)}'
-        }, status=500)
+        import traceback
+        traceback.print_exc()
+        return HttpResponse(f'Erreur lors de l\'export CSV: {str(e)}', status=500)
 
 # API: Gestion des dépenses
 class DepenseViewSet(viewsets.ModelViewSet):
@@ -4561,7 +4720,26 @@ class DepenseViewSet(viewsets.ModelViewSet):
         return Depense.objects.filter(caisse__agent__utilisateur=user)
 
     def perform_create(self, serializer):
-        serializer.save(utilisateur=self.request.user)
+        # Récupérer la caisse et le montant avant de sauvegarder
+        caisse = serializer.validated_data.get('caisse')
+        montant = serializer.validated_data.get('montantdepense', 0)
+        
+        # Vérifier que le fond_disponible est suffisant
+        if caisse and montant > 0:
+            fond_disponible = caisse.fond_disponible or 0
+            if montant > fond_disponible:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({
+                    'montantdepense': f'Le montant de la dépense ({montant} FCFA) dépasse le fond disponible de la caisse ({fond_disponible} FCFA).'
+                })
+        
+        # Sauvegarder la dépense
+        depense = serializer.save(utilisateur=self.request.user)
+        
+        # Diminuer le fond_disponible de la caisse
+        if caisse and montant > 0:
+            caisse.fond_disponible = (caisse.fond_disponible or 0) - montant
+            caisse.save(update_fields=['fond_disponible'])
 
     @action(detail=True, methods=['post'], url_path='approuver')
     def approuver_depense(self, request, pk=None):
@@ -5002,21 +5180,51 @@ class ExerciceCaisseViewSet(viewsets.ModelViewSet):
             .order_by('membre_id')
         )
 
+        # Récupérer les prêts non remboursés par membre
+        # Un prêt est considéré non remboursé s'il est EN_COURS, EN_RETARD ou BLOQUE
+        prets_non_rembourses_qs = (
+            Pret.objects
+            .filter(
+                caisse=exercice.caisse,
+                statut__in=['EN_COURS', 'EN_RETARD', 'BLOQUE']
+            )
+            .select_related('membre')
+        )
+        
+        # Calculer le montant restant pour chaque prêt et grouper par membre
+        prets_restants_par_membre = {}
+        for pret in prets_non_rembourses_qs:
+            membre_id = pret.membre_id
+            # Utiliser la propriété montant_restant qui calcule correctement le reste à payer
+            montant_restant = pret.montant_restant or Decimal('0')
+            if membre_id not in prets_restants_par_membre:
+                prets_restants_par_membre[membre_id] = Decimal('0')
+            prets_restants_par_membre[membre_id] += montant_restant
+        
         # Calcul du principal par membre (hors fondation)
+        # Le principal est réduit du montant des prêts non remboursés
         repartition = []
         total_base = Decimal('0')
         for row in cotisations_qs:
+            membre_id = row['membre_id']
             base = (row['s_tempon'] or 0) + (row['s_solidarite'] or 0) + (row['s_penalite'] or 0)
             base = Decimal(str(base))
+            
+            # Déduire le montant des prêts non remboursés du principal
+            pret_restant = prets_restants_par_membre.get(membre_id, Decimal('0'))
+            base_apres_deduction = max(base - pret_restant, Decimal('0'))
+            
             # Inclure tous les membres même si leur principal est 0
-            total_base += base
+            total_base += base_apres_deduction
             membre_nom = f"{row.get('membre__nom','') or ''} {(row.get('membre__prenoms','') or '')}".strip()
             if not membre_nom:
-                membre_nom = f"Membre {row['membre_id']}"
+                membre_nom = f"Membre {membre_id}"
             repartition.append({
-                'membre_id': row['membre_id'],
+                'membre_id': membre_id,
                 'membre_nom': membre_nom,
-                'principal': base
+                'principal': base_apres_deduction,
+                'pret_restant': str(pret_restant),  # Pour information dans la réponse
+                'principal_avant_deduction': str(base)  # Pour information
             })
 
         total_base = total_base.quantize(Decimal('0.01'))
@@ -5063,6 +5271,8 @@ class ExerciceCaisseViewSet(viewsets.ModelViewSet):
                 'principal': str(principal),
                 'interet': str(interet),
                 'total': str(total),
+                'pret_restant': item.get('pret_restant', '0'),  # Montant du prêt non remboursé
+                'principal_avant_deduction': item.get('principal_avant_deduction', str(principal)),  # Principal avant déduction du prêt
             })
 
         payload = {
