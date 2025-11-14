@@ -1343,12 +1343,34 @@
     
     <div id="rapports" class="content-section">
       <style>
-        .report-toolbar{gap:.5rem}
+        .rapports-header{gap:1rem;flex-wrap:wrap}
+        .rapports-header h2{flex:1 1 220px}
+        .report-toolbar{gap:.5rem;flex:1 1 320px;justify-content:flex-end}
         .report-btn{border-radius:999px;padding:.35rem .6rem;box-shadow:0 2px 8px rgba(0,0,0,.06);display:inline-flex;align-items:center;gap:.35rem;font-weight:600;font-size:.85rem;transition:transform .08s ease,box-shadow .2s ease}
         .report-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.09)}
         .report-sep{width:1px;background:rgba(0,0,0,.06);margin:0 .25rem}
+        @media (max-width: 992px){
+          .report-toolbar{justify-content:flex-start}
+        }
+        @media (max-width: 768px){
+          .report-toolbar{width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:.35rem}
+          .report-toolbar::-webkit-scrollbar{height:6px}
+          .report-btn{flex:0 0 auto}
+          .report-btn span{white-space:nowrap}
+          .report-sep{display:none!important}
+        }
+        @media (max-width: 576px){
+          .report-toolbar{overflow-x:visible;flex-wrap:wrap}
+          .report-btn{width:calc(50% - .35rem);justify-content:center}
+          .rapports-header h2{flex-basis:100%}
+          #rapports .card .btn{width:100%}
+          #rapports .card .d-flex.align-items-end{align-items:stretch}
+        }
+        @media (max-width: 420px){
+          .report-btn{width:100%}
+        }
       </style>
-      <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="rapports-header d-flex justify-content-between align-items-center mb-3">
         <h2 class="m-0">📈 Rapports et Statistiques</h2>
         <div class="d-flex flex-wrap report-toolbar">
           <button type="button" class="btn btn-sm btn-outline-primary report-btn" title="Rapport général (PDF)" onclick="genererRapportPDF('general', this)"><i class="fas fa-chart-line"></i><span>Général</span></button>
