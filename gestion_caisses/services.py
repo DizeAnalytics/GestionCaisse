@@ -514,7 +514,7 @@ class PretService:
         
         # 4. Calculer le total à rembourser (montant accordé + intérêts)
         montant_principal = pret.montant_accord
-        montant_interet = montant_principal * (pret.taux_interet / Decimal('100'))
+        montant_interet = pret.montant_interet_calcule or Decimal('0')
         total_a_rembourser = montant_principal + montant_interet
         
         # 5. Valider le prêt (pas de mouvement de fonds ici, seulement à l'octroi)

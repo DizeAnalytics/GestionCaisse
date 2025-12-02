@@ -1,6 +1,6 @@
 import os
 from io import BytesIO
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -849,7 +849,7 @@ def generate_pret_octroi_pdf(pret, buffer=None):
         ["Date d'octroi:", pret.date_decaissement.strftime('%d/%m/%Y %H:%M') if pret.date_decaissement else 'N/A'],
         ["Montant demandé:", f"{pret.montant_demande:,.0f} FCFA"],
         ["Montant accordé:", f"{pret.montant_accord:,.0f} FCFA"],
-        ["Taux d'intérêt:", f"{pret.taux_interet}%" if pret.taux_interet else "0%"],
+        ["Taux d'intérêt mensuel:", f"{pret.taux_interet}% / mois" if pret.taux_interet else "0%"],
         ["Durée:", f"{pret.duree_mois} mois"],
         ["Motif:", pret.motif or "Non spécifié"]
     ]
@@ -874,15 +874,18 @@ def generate_pret_octroi_pdf(pret, buffer=None):
     # Résumé financier
     story.append(Paragraph("💰 RÉSUMÉ FINANCIER", section_style))
     
-    montant_principal = pret.montant_accord
-    montant_interet = pret.montant_interet_calcule
-    total_a_rembourser = pret.total_a_rembourser
+    from decimal import Decimal
+    montant_principal = pret.montant_accord or Decimal('0')
+    montant_interet = pret.montant_interet_calcule or Decimal('0')
+    total_a_rembourser = (montant_principal + montant_interet) if montant_principal else pret.total_a_rembourser
+    mensualite = (total_a_rembourser / pret.duree_mois) if pret.duree_mois else total_a_rembourser
+    mensualite_str = f"{mensualite:,.0f} FCFA"
     
     resume_financier = [
         ["Montant principal accordé:", f"{montant_principal:,.0f} FCFA"],
         ["Intérêts calculés:", f"{montant_interet:,.0f} FCFA"],
         ["Net à payer (après taux d'intérêt):", f"{total_a_rembourser:,.0f} FCFA"],
-        ["Échéance mensuelle:", f"{(total_a_rembourser / pret.duree_mois):,.0f} FCFA"],
+        ["Échéance mensuelle:", mensualite_str],
         ["Statut:", "✅ PRÊT OCTROYÉ"]
     ]
     
@@ -986,8 +989,8 @@ def generate_pret_octroi_pdf(pret, buffer=None):
     conditions_text = f"""
     <b>Le membre bénéficiaire s'engage à :</b><br/>
     • Rembourser le montant total de <b>{pret.total_a_rembourser:,.0f} FCFA</b> sur une durée de <b>{pret.duree_mois} mois</b><br/>
-    • Respecter les échéances de remboursement mensuelles de <b>{(pret.total_a_rembourser / pret.duree_mois):,.0f} FCFA</b><br/>
-    • Payer les intérêts de <b>{pret.taux_interet}%</b> inclus dans le total à rembourser<br/>
+    • Respecter les échéances de remboursement mensuelles de <b>{mensualite_str}</b><br/>
+    • Payer les intérêts de <b>{pret.taux_interet}%</b> par mois inclus dans le total à rembourser<br/>
     • Informer la caisse en cas de difficultés de remboursement<br/>
     • Participer aux réunions de la caisse<br/><br/>
     
@@ -1199,7 +1202,7 @@ def generate_remboursement_pdf(pret, mouvement):
         ["Date de demande:", pret.date_demande.strftime('%d/%m/%Y')],
         ["Montant demandé:", f"{pret.montant_demande:,.0f} FCFA"],
         ["Montant accordé:", f"{pret.montant_accord:,.0f} FCFA"],
-        ["Taux d'intérêt:", f"{pret.taux_interet}%" if pret.taux_interet else "0%"],
+        ["Taux d'intérêt mensuel:", f"{pret.taux_interet}% / mois" if pret.taux_interet else "0%"],
         ["Durée:", f"{pret.duree_mois} mois"],
         ["Motif:", pret.motif or "Non spécifié"]
     ]
@@ -1225,9 +1228,29 @@ def generate_remboursement_pdf(pret, mouvement):
     story.append(Paragraph("💰 DÉTAILS DU REMBOURSEMENT", section_style))
     
     # Montants liés au remboursement courant
-    montant_rembourse = mouvement.montant
-    interet_rembourse = getattr(mouvement, 'interet_rembourse', 0) or 0
-    total_rembourse = montant_rembourse + interet_rembourse
+    from decimal import Decimal
+    paiement_total = Decimal(str(mouvement.montant or 0))  # principal + intérêts
+
+    # Essayer de récupérer la part d'intérêt depuis un attribut dédié ou via la description
+    interet_attr = getattr(mouvement, 'interet_rembourse', None)
+    if interet_attr is not None:
+        interet_rembourse = Decimal(str(interet_attr or 0))
+    else:
+        interet_rembourse = Decimal('0')
+        try:
+            # Description : "Remboursement du prêt ... (principal: X FCFA, intérêt: Y FCFA)"
+            import re
+            match = re.search(r"intér(?:e|ê)t:\s*([\d\s]+)", (mouvement.description or ""), re.IGNORECASE)
+            if match:
+                interet_val = match.group(1).replace(' ', '')
+                interet_rembourse = Decimal(interet_val)
+        except Exception:
+            interet_rembourse = Decimal('0')
+
+    montant_rembourse = paiement_total - interet_rembourse
+    if montant_rembourse < 0:
+        montant_rembourse = Decimal('0')
+    total_rembourse = paiement_total
 
     # Calculs globaux (alignés avec l'attestation de prêt)
     net_a_payer = pret.total_a_rembourser  # Montant accordé + intérêts
@@ -1571,7 +1594,7 @@ def generate_remboursement_complet_pdf(pret, mouvements_remboursement, buffer=No
         ["Caisse:", pret.caisse.nom_association],
         ["Date de demande:", pret.date_demande.strftime('%d/%m/%Y')],
         ["Montant demandé:", f"{pret.montant_demande:,.0f} FCFA"],
-        ["Taux d'intérêt:", f"{pret.taux_interet}%" if pret.taux_interet else "0%"],
+        ["Taux d'intérêt mensuel:", f"{pret.taux_interet}% / mois" if pret.taux_interet else "0%"],
         ["Montant accordé:", f"{pret.montant_accord:,.0f} FCFA"],
         ["Durée:", f"{pret.duree_mois} mois"],
         ["Motif:", pret.motif or "Non spécifié"]
@@ -1597,17 +1620,17 @@ def generate_remboursement_complet_pdf(pret, mouvements_remboursement, buffer=No
     # Résumé financier
     story.append(Paragraph("💰 RÉSUMÉ FINANCIER", section_style))
     
-    # Total dû = principal + intérêts
+    # Total dû = principal + intérêts (avec taux mensuel)
     from decimal import Decimal
     montant_total = pret.total_a_rembourser or Decimal('0')
+    montant_principal = pret.montant_accord or Decimal('0')
+    # Intérêt total théorique sur toute la durée (montant_total = principal + intérêts)
+    interet_total = (montant_total - montant_principal) if montant_total and montant_principal else Decimal('0')
     montant_rembourse = pret.montant_rembourse  # cumul principal enregistré
-    # On recalculera les intérêts payés ci-dessous à partir des mouvements
-    interet_total = Decimal('0')
     
     resume_financier = [
-        ["Montant total du prêt:", f"{montant_total:,.0f} FCFA"],
-        ["Net à payer (après taux d'intérêt):", f"{pret.total_a_rembourser:,.0f} FCFA"],
-        ["Total remboursé:", f"{montant_rembourse:,.0f} FCFA"],
+        ["Total dû (principal + intérêts):", f"{montant_total:,.0f} FCFA"],
+        ["Principal remboursé:", f"{montant_rembourse:,.0f} FCFA"],
         ["Intérêts payés:", f"{interet_total:,.0f} FCFA"],
         ["Statut:", "✅ REMBOURSEMENT COMPLET"]
     ]
@@ -2781,8 +2804,6 @@ def _table_from_key_values(rows, col1_width, col2_width):
 def generate_rapport_pdf(rapport):
     """Génère un PDF structuré pour un RapportActivite."""
     buffer = BytesIO()
-    # Marges réduites pour élargir les tableaux
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=18, rightMargin=18, topMargin=24, bottomMargin=24)
     story = []
 
     # Paramètres et en-tête standard
@@ -2798,10 +2819,28 @@ def generate_rapport_pdf(rapport):
         'depenses': "RAPPORT DES DÉPENSES",
     }
     # Ajouter libellés pour les rapports de cotisations afin d'éviter un double en-tête plus bas
-    if getattr(rapport, 'type_rapport', '') in ('cotisations_general', 'cotisations_par_membre'):
+    if getattr(rapport, 'type_rapport', '') in ('cotisations_general', 'cotisations_par_membre', 'cotisations_membre'):
         titre_map['cotisations_general'] = "RAPPORT COTISATIONS - GÉNÉRAL"
         titre_map['cotisations_par_membre'] = "RAPPORT COTISATIONS - PAR MEMBRE"
+        titre_map['cotisations_membre'] = "RAPPORT COTISATIONS - MEMBRE"
+
+    # Choix de l'orientation : le rapport général est en paysage pour mieux afficher toutes les colonnes
+    page_size = landscape(A4) if getattr(rapport, 'type_rapport', '') == 'general' else A4
+    # Marges réduites pour élargir les tableaux
+    doc = SimpleDocTemplate(buffer, pagesize=page_size, leftMargin=18, rightMargin=18, topMargin=24, bottomMargin=24)
+
+    # Sous-titre : par défaut le nom de la caisse, mais pour un membre on ajoute son nom
     sous_titre = rapport.caisse.nom_association if getattr(rapport, 'caisse', None) else "Toutes Caisses"
+    if getattr(rapport, 'type_rapport', '') == 'cotisations_membre':
+        membre_info = {}
+        if hasattr(rapport, 'donnees') and isinstance(rapport.donnees, dict):
+            membre_info = rapport.donnees.get('membre') or {}
+        membre_nom = membre_info.get('nom') if isinstance(membre_info, dict) else ''
+        if membre_nom:
+            if getattr(rapport, 'caisse', None):
+                sous_titre = f"Cotisations de {membre_nom} — {rapport.caisse.nom_association}"
+            else:
+                sous_titre = f"Cotisations de {membre_nom}"
     if rapport.date_debut or rapport.date_fin:
         periode = f"Période: {rapport.date_debut.strftime('%d/%m/%Y') if rapport.date_debut else '-'} → {rapport.date_fin.strftime('%d/%m/%Y') if rapport.date_fin else '-'}"
     else:
@@ -3280,8 +3319,37 @@ def generate_rapport_pdf(rapport):
 
     # Sections selon le type
     if rapport.type_rapport == 'general':
+         # 1) Détail des caisses de l'agent (ou du système)
+         caisses_details = data.get('caisses_details') or []
+         if caisses_details:
+             story.append(Paragraph('Caisses', styles['Heading3']))
+             rows = [['Nom', 'Statut', 'Membres', 'Prêts', 'Montant prêts', 'Fond initial', 'Fond dispo']]
+             for c in caisses_details:
+                 rows.append([
+                     c.get('nom',''),
+                     c.get('statut',''),
+                     str(c.get('nb_membres',0)),
+                     str(c.get('nb_prets',0)),
+                     f"{float(c.get('montant_total_prets',0) or 0):,.0f}".replace(',', ' '),
+                     f"{float(c.get('fond_initial',0) or 0):,.0f}".replace(',', ' '),
+                     f"{float(c.get('fond_disponible',0) or 0):,.0f}".replace(',', ' '),
+                 ])
+             t = RLTable(rows, colWidths=[2.3*inch, 0.9*inch, 0.8*inch, 0.8*inch, 1.3*inch, 1.2*inch, 1.2*inch])
+             t.setStyle(RLTableStyle([
+                 ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#E8F4FD')),
+                 ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+                 ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#CCCCCC')),
+                 ('FONTSIZE',(0,0),(-1,0),9),
+                 ('FONTSIZE',(0,1),(-1,-1),8),
+                 ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.HexColor('#F8F9FA')]),
+                 ('ALIGN',(3,1),(-1,-1),'RIGHT'),
+             ]))
+             story.append(t)
+             story.append(Spacer(1, 10))
+
+         # 2) Bloc agrégé de synthèse de la "caisse globale"
          if 'caisse' in data:
-             add_dict_section('Caisse', data['caisse'])
+             add_dict_section('Synthèse globale', data['caisse'])
          if 'membres' in data:
              add_dict_section('Membres', data['membres'])
          if 'prets' in data:

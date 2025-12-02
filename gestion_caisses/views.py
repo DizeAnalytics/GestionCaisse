@@ -128,9 +128,39 @@ from django.db.models.functions import TruncMonth, TruncDate
 
 
 def get_user_caisse(user):
-    """Retourne la caisse liée au profil de l'utilisateur (None si non liée)."""
+    """Retourne la caisse liée au profil de l'utilisateur (None si non liée).
+    Pour les agents, retourne None (utiliser get_user_caisses pour obtenir toutes leurs caisses)."""
+    if user.is_superuser:
+        return None  # Les admins voient toutes les caisses
+    
+    # Vérifier si c'est un agent
+    if AgentPermissions.is_agent(user):
+        return None  # Les agents ont plusieurs caisses, utiliser get_user_caisses
+    
+    # Sinon, vérifier si c'est un membre
     profil = getattr(user, 'profil_membre', None)
     return getattr(profil, 'caisse', None) if profil else None
+
+
+def get_user_caisses(user):
+    """Retourne la liste des caisses accessibles par l'utilisateur.
+    - Pour les admins: toutes les caisses
+    - Pour les agents: toutes leurs caisses assignées
+    - Pour les membres: uniquement leur caisse
+    - Sinon: liste vide"""
+    if user.is_superuser:
+        return Caisse.objects.all()
+    
+    # Vérifier si c'est un agent
+    if AgentPermissions.is_agent(user):
+        return AgentPermissions.get_agent_caisses(user)
+    
+    # Sinon, vérifier si c'est un membre
+    caisse = get_user_caisse(user)
+    if caisse:
+        return Caisse.objects.filter(id=caisse.id)
+    
+    return Caisse.objects.none()
 
 
 # API: Séances de réunion
@@ -143,6 +173,17 @@ class SeanceReunionViewSet(viewsets.ModelViewSet):
     search_fields = ['titre', 'caisse__nom_association']
     ordering_fields = ['date_seance', 'date_creation']
     ordering = ['-date_seance']
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Restreindre les non-admins à leurs caisses
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
+            else:
+                qs = qs.none()
+        return qs
 
 
 # API: Cotisations
@@ -155,6 +196,17 @@ class CotisationViewSet(viewsets.ModelViewSet):
     search_fields = ['membre__nom', 'membre__prenoms', 'caisse__nom_association']
     ordering_fields = ['date_cotisation', 'montant_total']
     ordering = ['-date_cotisation']
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Restreindre les non-admins à leurs caisses
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
+            else:
+                qs = qs.none()
+        return qs
 
     def perform_create(self, serializer):
         # Autoriser la création de cotisations même sans exercice actif
@@ -325,17 +377,54 @@ class CotisationStatsViewSet(viewsets.ViewSet):
 @login_required
 def user_context(request):
     """Retourne la caisse et le rôle de l'utilisateur connecté"""
-    profil = getattr(request.user, 'profil_membre', None)
-    caisse_id = profil.caisse_id if profil else None
-    caisse_code = profil.caisse.code if profil and profil.caisse else None
+    user = request.user
+    role = get_user_role(user)
+    
+    # Pour les agents, on retourne toutes leurs caisses et la première par défaut
+    # Pour les membres, on retourne leur caisse unique
+    caisse_id = None
+    caisse_code = None
+    caisses = []
+    
+    if role == 'Agent':
+        # Pour les agents, retourner toutes leurs caisses
+        agent_caisses = AgentPermissions.get_agent_caisses(user)
+        caisses = [
+            {
+                'id': caisse.id,
+                'code': caisse.code,
+                'nom_association': caisse.nom_association,
+                'statut': caisse.statut
+            }
+            for caisse in agent_caisses
+        ]
+        # Retourner la première caisse par défaut (ou None si aucune)
+        if agent_caisses.exists():
+            first_caisse = agent_caisses.first()
+            caisse_id = first_caisse.id
+            caisse_code = first_caisse.code
+    elif role != 'Administrateur':
+        # Pour les membres
+        profil = getattr(user, 'profil_membre', None)
+        if profil and profil.caisse:
+            caisse_id = profil.caisse.id
+            caisse_code = profil.caisse.code
+            caisses = [{
+                'id': profil.caisse.id,
+                'code': profil.caisse.code,
+                'nom_association': profil.caisse.nom_association,
+                'statut': profil.caisse.statut
+            }]
+    
     return JsonResponse({
         'user': {
-            'id': request.user.id,
-            'username': request.user.username,
-            'role': get_user_role(request.user),
+            'id': user.id,
+            'username': user.username,
+            'role': role,
         },
         'caisse_id': caisse_id,
         'caisse_code': caisse_code,
+        'caisses': caisses,  # Liste des caisses accessibles (utile pour les agents)
     })
 
 # Vue pour le frontend principal
@@ -383,17 +472,27 @@ def dashboard_view(request):
     if request.user.is_superuser and request.user.username == 'admin':
         return redirect('/adminsecurelogin/')
     
-    # Pour tous les autres utilisateurs (présidente, secrétaire, trésorière, membres)
+    # Pour tous les autres utilisateurs (agents, présidente, secrétaire, trésorière, membres)
     # rester dans le frontend
-    user_caisse = get_user_caisse(request.user)
+    user_role = get_user_role(request.user)
+    caisse_nom = ''
+    
+    if user_role == 'Agent':
+        # Pour les agents, prendre la première caisse ou laisser vide
+        agent_caisses = AgentPermissions.get_agent_caisses(request.user)
+        if agent_caisses.exists():
+            caisse_nom = agent_caisses.first().nom_association
+    else:
+        user_caisse = get_user_caisse(request.user)
+        caisse_nom = user_caisse.nom_association if user_caisse else ''
     
     # Récupérer les paramètres de l'application pour l'affichage
     parametres = get_parametres_application()
     
     context = {
         'user': request.user,
-        'user_role': get_user_role(request.user),
-        'caisse_nom': user_caisse.nom_association if user_caisse else '',
+        'user_role': user_role,
+        'caisse_nom': caisse_nom,
         'nom_application': parametres['nom_application'],
         'logo': parametres['logo'],
         'description_application': parametres['description_application'],
@@ -532,9 +631,13 @@ def api_logout(request):
 
 # Fonction utilitaire pour déterminer le rôle de l'utilisateur
 def get_user_role(user):
-    """Détermine le rôle de l'utilisateur basé sur son profil membre"""
+    """Détermine le rôle de l'utilisateur basé sur son profil membre ou agent"""
     if user.is_superuser:
         return 'Administrateur'
+    
+    # Vérifier si l'utilisateur est un agent
+    if AgentPermissions.is_agent(user):
+        return 'Agent'
     
     # Vérifier si l'utilisateur a un profil membre
     try:
@@ -659,11 +762,11 @@ class CaisseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # Les non-admins ne voient que leur propre caisse
+        # Les non-admins voient uniquement leurs caisses (membre) ou les caisses assignées (agent)
         if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
-            if caisse:
-                qs = qs.filter(id=caisse.id)
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(id__in=user_caisses.values_list('id', flat=True))
             else:
                 qs = qs.none()
         return qs
@@ -949,11 +1052,11 @@ class MembreViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # Restreindre les non-admins à leur caisse
+        # Restreindre les non-admins à leurs caisses (membre ou agent)
         if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
-            if caisse:
-                qs = qs.filter(caisse=caisse)
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
             else:
                 qs = qs.none()
         return qs
@@ -966,9 +1069,21 @@ class MembreViewSet(viewsets.ModelViewSet):
         if role in ['PRESIDENTE', 'SECRETAIRE', 'TRESORIERE'] and not self.request.user.is_superuser:
             raise ValidationError({'detail': 'Seuls les administrateurs peuvent créer des présidents, secrétaires et trésoriers.'})
         
-        # Forcer la caisse du user pour les non-admins
+        # Pour les non-admins, vérifier que la caisse appartient à l'utilisateur
         if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
+            caisse = serializer.validated_data.get('caisse')
+            user_caisses = get_user_caisses(self.request.user)
+            
+            # Si c'est un membre (une seule caisse), utiliser automatiquement sa caisse
+            if not AgentPermissions.is_agent(self.request.user):
+                caisse = get_user_caisse(self.request.user)
+                if not caisse:
+                    raise ValidationError({'detail': 'Aucune caisse associée à votre compte.'})
+            
+            # Vérifier que la caisse sélectionnée appartient à l'utilisateur
+            if caisse not in user_caisses:
+                raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
+            
             # Respecter la limite de 30 actifs
             if caisse and caisse.membres.filter(statut='ACTIF').count() >= 30 and serializer.validated_data.get('statut', 'ACTIF') == 'ACTIF':
                 raise ValidationError({'detail': 'Une caisse ne peut pas avoir plus de 30 membres actifs.'})
@@ -985,7 +1100,20 @@ class MembreViewSet(viewsets.ModelViewSet):
             raise ValidationError({'detail': 'Seuls les administrateurs peuvent modifier les rôles de président, secrétaire et trésorier.'})
         
         if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
+            # Vérifier que la caisse du membre appartient à l'utilisateur
+            caisse = serializer.instance.caisse
+            user_caisses = get_user_caisses(self.request.user)
+            
+            if caisse not in user_caisses:
+                raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
+            
+            # Permettre de changer la caisse seulement pour les agents (dans leurs caisses)
+            new_caisse = serializer.validated_data.get('caisse', caisse)
+            if AgentPermissions.is_agent(self.request.user) and new_caisse and new_caisse != caisse:
+                if new_caisse not in user_caisses:
+                    raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
+                caisse = new_caisse
+            
             statut_nouveau = serializer.validated_data.get('statut')
             # Si on active un membre et qu'on atteint la limite
             if statut_nouveau == 'ACTIF' and caisse and caisse.membres.filter(statut='ACTIF').exclude(pk=serializer.instance.pk).count() >= 30:
@@ -1057,11 +1185,11 @@ class PretViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # Restreindre les non-admins à leur caisse
+        # Restreindre les non-admins à leurs caisses (membre ou agent)
         if not self.request.user.is_superuser:
-            caisse = get_user_caisse(self.request.user)
-            if caisse:
-                qs = qs.filter(caisse=caisse)
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
             else:
                 qs = qs.none()
         return qs
@@ -1072,11 +1200,24 @@ class PretViewSet(viewsets.ModelViewSet):
             pret = serializer.save()
             pret.full_clean()
             
-            # Forcer la caisse du user pour les non-admins
+            # Pour les non-admins, vérifier que la caisse appartient à l'utilisateur
             if not self.request.user.is_superuser:
-                caisse = get_user_caisse(self.request.user)
-                pret.caisse = caisse
-                pret.save()
+                caisse = serializer.validated_data.get('caisse') or pret.caisse
+                user_caisses = get_user_caisses(self.request.user)
+                
+                # Si c'est un membre (une seule caisse), utiliser automatiquement sa caisse
+                if not AgentPermissions.is_agent(self.request.user):
+                    caisse = get_user_caisse(self.request.user)
+                    if not caisse:
+                        raise ValidationError({'detail': 'Aucune caisse associée à votre compte.'})
+                
+                # Vérifier que la caisse sélectionnée appartient à l'utilisateur
+                if caisse and caisse not in user_caisses:
+                    raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
+                
+                if caisse:
+                    pret.caisse = caisse
+                    pret.save()
             
             # Ne pas calculer automatiquement le montant_accord ici
             # L'admin le définira lors de la validation
@@ -1440,6 +1581,17 @@ class EcheanceViewSet(viewsets.ModelViewSet):
     search_fields = ['pret__numero_pret']
     ordering_fields = ['date_echeance', 'numero_echeance']
     ordering = ['pret', 'numero_echeance']
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Restreindre les non-admins à leurs caisses
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(pret__caisse__in=user_caisses)
+            else:
+                qs = qs.none()
+        return qs
 
 
 class MouvementFondViewSet(viewsets.ModelViewSet):
@@ -1452,6 +1604,17 @@ class MouvementFondViewSet(viewsets.ModelViewSet):
     search_fields = ['description']
     ordering_fields = ['date_mouvement', 'montant']
     ordering = ['-date_mouvement']
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Restreindre les non-admins à leurs caisses
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
+            else:
+                qs = qs.none()
+        return qs
 
 
 
@@ -1467,6 +1630,17 @@ class VirementBancaireViewSet(viewsets.ModelViewSet):
     search_fields = ['reference_bancaire', 'numero_compte_cible']
     ordering_fields = ['date_demande', 'montant']
     ordering = ['-date_demande']
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Restreindre les non-admins à leurs caisses
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                qs = qs.filter(caisse__in=user_caisses)
+            else:
+                qs = qs.none()
+        return qs
     
     def perform_create(self, serializer):
         virement = serializer.save()
@@ -1526,14 +1700,18 @@ class DashboardViewSet(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        """Obtenir les statistiques du tableau de bord (scopées à la caisse de l'utilisateur si non-admin)"""
-        caisse_user = get_user_caisse(request.user) if not request.user.is_superuser else None
+        """Obtenir les statistiques du tableau de bord (scopées aux caisses de l'utilisateur si non-admin)"""
+        user_caisses = get_user_caisses(request.user)
         caisse_filter = {}
-        if caisse_user:
-            caisse_filter = {'caisse': caisse_user}
+        if not request.user.is_superuser and user_caisses.exists():
+            caisse_filter = {'caisse__in': user_caisses}
         
         # Statistiques
-        total_caisses = Caisse.objects.count() if request.user.is_superuser else 1
+        if request.user.is_superuser:
+            total_caisses = Caisse.objects.count()
+        else:
+            total_caisses = user_caisses.count() if user_caisses.exists() else 0
+        
         total_membres = Membre.objects.filter(statut='ACTIF', **caisse_filter).count()
         # Considérer comme "actifs": tous les prêts non clôturés/annulés
         # Inclut: EN_ATTENTE, EN_ATTENTE_ADMIN, VALIDE, EN_COURS, EN_RETARD, BLOQUE
@@ -1545,7 +1723,9 @@ class DashboardViewSet(viewsets.ViewSet):
             total=Sum('montant_accord')
         )['total'] or 0
         
-        solde_total_disponible = (Caisse.objects.filter(id=caisse_user.id) if caisse_user else Caisse.objects.all()).aggregate(
+        solde_total_disponible = user_caisses.aggregate(
+            total=Sum('fond_disponible')
+        )['total'] or 0 if user_caisses.exists() else Caisse.objects.all().aggregate(
             total=Sum('fond_disponible')
         )['total'] or 0
         
@@ -1561,8 +1741,8 @@ class DashboardViewSet(viewsets.ViewSet):
             mois = date.strftime('%Y-%m')
             # Filtrer par caisse si l'utilisateur n'est pas admin
             pret_filter = {'date_demande__year': date.year, 'date_demande__month': date.month}
-            if caisse_user:
-                pret_filter['caisse'] = caisse_user
+            if not request.user.is_superuser and user_caisses.exists():
+                pret_filter['caisse__in'] = user_caisses
             count = Pret.objects.filter(**pret_filter).count()
             evolution_prets.append({'mois': mois, 'nombre': count})
         
@@ -1608,21 +1788,21 @@ class DashboardViewSet(viewsets.ViewSet):
         if request.user.is_superuser:
             agg = Cotisation.objects.aggregate(total_frais_fondation=Sum('frais_fondation'))
         else:
-            caisse_user = get_user_caisse(request.user)
-            if not caisse_user:
+            user_caisses = get_user_caisses(request.user)
+            if not user_caisses.exists():
                 return Response({'total_frais_fondation': 0})
-            agg = Cotisation.objects.filter(caisse=caisse_user).aggregate(total_frais_fondation=Sum('frais_fondation'))
+            agg = Cotisation.objects.filter(caisse__in=user_caisses).aggregate(total_frais_fondation=Sum('frais_fondation'))
 
         total = agg['total_frais_fondation'] or 0
         return Response({'total_frais_fondation': total})
     
     @action(detail=False, methods=['get'])
     def alertes(self, request):
-        """Obtenir les alertes du système (scopées à la caisse de l'utilisateur si non-admin)"""
-        caisse_user = get_user_caisse(request.user) if not request.user.is_superuser else None
+        """Obtenir les alertes du système (scopées aux caisses de l'utilisateur si non-admin)"""
+        user_caisses = get_user_caisses(request.user)
         caisse_filter = {}
-        if caisse_user:
-            caisse_filter = {'caisse': caisse_user}
+        if not request.user.is_superuser and user_caisses.exists():
+            caisse_filter = {'caisse__in': user_caisses}
         
         alertes = []
         
@@ -1639,7 +1819,11 @@ class DashboardViewSet(viewsets.ViewSet):
         if request.user.is_superuser:
             caisses_fond_insuffisant = Caisse.objects.filter(fond_disponible__lt=10000)
         else:
-            caisses_fond_insuffisant = Caisse.objects.filter(id=caisse_user.id, fond_disponible__lt=10000) if caisse_user else Caisse.objects.none()
+            # Utiliser les caisses accessibles à l'utilisateur (agents, membres, etc.)
+            if user_caisses.exists():
+                caisses_fond_insuffisant = Caisse.objects.filter(id__in=user_caisses.values('id'), fond_disponible__lt=10000)
+            else:
+                caisses_fond_insuffisant = Caisse.objects.none()
         
         if caisses_fond_insuffisant.exists():
             alertes.append({
@@ -2346,16 +2530,30 @@ def caisses_cards_view(request):
 def rapports_caisse_api(request):
     """API pour les rapports de caisse"""
     try:
-        # Si admin: rapports GLOBAUX (toutes caisses). Si non admin: rapport limité à sa caisse.
+        # Si admin: rapports GLOBAUX (toutes caisses).
+        # Si non admin (agents, membres, etc.) : rapports limités STRICTEMENT aux caisses auxquelles l'utilisateur a accès.
         caisse = None
-        if not request.user.is_superuser:
+        user = request.user
+        is_admin = user.is_superuser
+        multi_caisses_scope = False  # True si l'on agrège sur plusieurs caisses côté agent
+
+        if not is_admin:
             caisse_id = request.GET.get('caisse_id')
-            user_caisse = get_user_caisse(request.user)
-            if not user_caisse:
+            user_caisses_qs = get_user_caisses(user)
+
+            if not user_caisses_qs.exists():
                 return JsonResponse({'error': 'Aucune caisse associée'}, status=400)
-            if caisse_id and str(user_caisse.id) != str(caisse_id):
-                return JsonResponse({'error': "Accès non autorisé à cette caisse"}, status=403)
-            caisse = user_caisse
+
+            # Si un caisse_id explicite est demandé, vérifier qu'elle appartient bien aux caisses de l'utilisateur
+            if caisse_id and caisse_id != '_ALL_MY_':
+                if not user_caisses_qs.filter(id=caisse_id).exists():
+                    return JsonResponse({'error': "Accès non autorisé à cette caisse"}, status=403)
+                caisse = user_caisses_qs.get(id=caisse_id)
+                multi_caisses_scope = False  # Rapport mono-caisse
+            else:
+                # Pas de caisse_id explicite ou "_ALL_MY_" : on considère un scope multi-caisses
+                multi_caisses_scope = True
+                caisse = None  # Pas de caisse unique, on veut toutes les caisses
         
         # Paramètres de filtrage
         date_debut = request.GET.get('date_debut')
@@ -2368,24 +2566,63 @@ def rapports_caisse_api(request):
         if date_fin:
             date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
         
-        # Générer le rapport selon le type (admin => global ; non-admin => par caisse)
-        is_admin = request.user.is_superuser
-        if type_rapport == 'general':
-            rapport = generer_rapport_general_global(date_debut, date_fin) if is_admin else generer_rapport_general_caisse(caisse, date_debut, date_fin)
-        elif type_rapport == 'financier':
-            rapport = generer_rapport_financier_global(date_debut, date_fin) if is_admin else generer_rapport_financier_caisse(caisse, date_debut, date_fin)
-        elif type_rapport == 'prets':
-            rapport = generer_rapport_prets_global(date_debut, date_fin) if is_admin else generer_rapport_prets_caisse(caisse, date_debut, date_fin)
-        elif type_rapport == 'membres':
-            rapport = generer_rapport_membres_global(date_debut, date_fin) if is_admin else generer_rapport_membres_caisse(caisse, date_debut, date_fin)
-        elif type_rapport == 'echeances':
-            rapport = generer_rapport_echeances_global(date_debut, date_fin) if is_admin else generer_rapport_echeances_caisse(caisse, date_debut, date_fin)
-        elif type_rapport == 'cotisations_general':
+        # Générer le rapport selon le type
+        # - Admin : global (toutes les caisses)
+        # - Non admin : si une caisse précise est fournie => rapport de cette caisse
+        #               sinon => rapport agrégé sur toutes ses caisses
+        if type_rapport in ['general', 'financier', 'prets', 'membres', 'echeances'] and not is_admin:
+            # Pour les non-admins, déterminer si on fait un rapport mono-caisse ou multi-caisses
+            user_caisses_qs = get_user_caisses(user)
+            if caisse is not None and not multi_caisses_scope:
+                # Rapport pour une seule caisse (caisse_id explicite fourni)
+                if type_rapport == 'general':
+                    rapport = generer_rapport_general_caisse(caisse, date_debut, date_fin)
+                elif type_rapport == 'financier':
+                    rapport = generer_rapport_financier_caisse(caisse, date_debut, date_fin)
+                elif type_rapport == 'prets':
+                    rapport = generer_rapport_prets_caisse(caisse, date_debut, date_fin)
+                elif type_rapport == 'membres':
+                    rapport = generer_rapport_membres_caisse(caisse, date_debut, date_fin)
+                else:  # echeances
+                    rapport = generer_rapport_echeances_caisse(caisse, date_debut, date_fin)
+            else:
+                # Rapport agrégé sur toutes les caisses de l'utilisateur (agent)
+                # (caisse = None ou multi_caisses_scope = True)
+                if type_rapport == 'general':
+                    rapport = generer_rapport_general_global(date_debut, date_fin, caisses_qs=user_caisses_qs)
+                elif type_rapport == 'financier':
+                    rapport = generer_rapport_financier_global(date_debut, date_fin, caisses_qs=user_caisses_qs)
+                elif type_rapport == 'prets':
+                    rapport = generer_rapport_prets_global(date_debut, date_fin, caisses_qs=user_caisses_qs)
+                elif type_rapport == 'membres':
+                    rapport = generer_rapport_membres_global(date_debut, date_fin, caisses_qs=user_caisses_qs)
+                else:  # echeances
+                    rapport = generer_rapport_echeances_global(date_debut, date_fin, caisses_qs=user_caisses_qs)
+        else:
+            # Cas admin : toujours global toutes caisses
+            if type_rapport == 'general':
+                rapport = generer_rapport_general_global(date_debut, date_fin)
+            elif type_rapport == 'financier':
+                rapport = generer_rapport_financier_global(date_debut, date_fin)
+            elif type_rapport == 'prets':
+                rapport = generer_rapport_prets_global(date_debut, date_fin)
+            elif type_rapport == 'membres':
+                rapport = generer_rapport_membres_global(date_debut, date_fin)
+            elif type_rapport == 'echeances':
+                rapport = generer_rapport_echeances_global(date_debut, date_fin)
+
+        if type_rapport == 'cotisations_general':
             # Rapport des cotisations (liste)
-            # Admin sans caisse_id => global; sinon filtré par caisse
-            if is_admin and caisse is None:
-                cotisations = Cotisation.objects.all()
-                caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+            # Admin sans caisse_id => global; Agent sans caisse_id => toutes ses caisses; sinon filtré par caisse
+            if (is_admin and caisse is None) or (not is_admin and caisse is None):
+                if is_admin:
+                    cotisations = Cotisation.objects.all()
+                    caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+                else:
+                    # Agent : toutes ses caisses
+                    user_caisses_qs = get_user_caisses(user)
+                    cotisations = Cotisation.objects.filter(caisse__in=user_caisses_qs)
+                    caisse_info = {'code': 'MES_CAISSES', 'nom': 'Toutes mes caisses'}
             else:
                 cotisations = Cotisation.objects.filter(caisse=caisse)
                 caisse_info = {'code': caisse.code, 'nom': caisse.nom_association}
@@ -2423,10 +2660,16 @@ def rapports_caisse_api(request):
             }
         elif type_rapport == 'cotisations_par_membre':
             from collections import defaultdict
-            # Admin sans caisse_id => global; sinon filtré par caisse
-            if is_admin and caisse is None:
-                cotisations = Cotisation.objects.all()
-                caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+            # Admin sans caisse_id => global; Agent sans caisse_id => toutes ses caisses; sinon filtré par caisse
+            if (is_admin and caisse is None) or (not is_admin and caisse is None):
+                if is_admin:
+                    cotisations = Cotisation.objects.all()
+                    caisse_info = {'code': 'GLOBAL', 'nom': 'Toutes les caisses'}
+                else:
+                    # Agent : toutes ses caisses
+                    user_caisses_qs = get_user_caisses(user)
+                    cotisations = Cotisation.objects.filter(caisse__in=user_caisses_qs)
+                    caisse_info = {'code': 'MES_CAISSES', 'nom': 'Toutes mes caisses'}
             else:
                 cotisations = Cotisation.objects.filter(caisse=caisse)
                 caisse_info = {'code': caisse.code, 'nom': caisse.nom_association}
@@ -2475,9 +2718,16 @@ def rapports_caisse_api(request):
                     depenses = Depense.objects.all()
                     caisse_info = None
             else:
-                # Non-admin: toujours filtrer par sa caisse
-                depenses = Depense.objects.filter(caisse=caisse)
-                caisse_info = caisse
+                # Non-admin: filtrer par sa caisse ou toutes ses caisses selon le contexte
+                if caisse is None:
+                    # Agent veut toutes ses caisses
+                    user_caisses_qs = get_user_caisses(user)
+                    depenses = Depense.objects.filter(caisse__in=user_caisses_qs)
+                    caisse_info = None
+                else:
+                    # Agent veut une caisse spécifique
+                    depenses = Depense.objects.filter(caisse=caisse)
+                    caisse_info = caisse
             
             if date_debut:
                 depenses = depenses.filter(datedepense__gte=date_debut)
@@ -2506,13 +2756,24 @@ def rapports_caisse_api(request):
             }
         elif type_rapport == 'cotisations_membre':
             # Rapport des cotisations d'un seul membre (demandé)
+            # - Pour les agents : limité à leur(s) caisse(s) (variable `caisse` déjà positionnée plus haut)
+            # - Pour les administrateurs : autoriser n'importe quel membre du système
             membre_id = request.GET.get('membre') or request.GET.get('membre_id')
             if not membre_id:
                 return JsonResponse({'error': 'Paramètre membre (ou membre_id) requis'}, status=400)
+
             try:
-                membre = Membre.objects.get(pk=membre_id, caisse=caisse)
+                if is_admin:
+                    # L'admin peut générer un rapport pour n'importe quel membre ;
+                    # la caisse du membre devient alors la caisse de référence du rapport.
+                    membre = Membre.objects.select_related('caisse').get(pk=membre_id)
+                    caisse = membre.caisse
+                else:
+                    # Pour les non-admins, on reste strictement dans le périmètre de leurs caisses
+                    membre = Membre.objects.get(pk=membre_id, caisse=caisse)
             except Membre.DoesNotExist:
                 return JsonResponse({'error': 'Membre introuvable dans cette caisse'}, status=404)
+
             cotisations = Cotisation.objects.filter(caisse=caisse, membre=membre)
             if date_debut:
                 cotisations = cotisations.filter(date_cotisation__date__gte=date_debut)
@@ -2608,23 +2869,34 @@ def rapports_caisse_api(request):
                         'totaux': {},
                     })
         else:
-            return JsonResponse({'error': 'Type de rapport invalide'}, status=400)
+            # Ne considérer comme invalide que les types qui ne sont pas déjà gérés plus haut
+            if type_rapport not in ['general', 'financier', 'prets', 'membres', 'echeances']:
+                return JsonResponse({'error': 'Type de rapport invalide'}, status=400)
         
         # Si on demande un PDF, retourner un binaire PDF
         output_format = request.GET.get('format')
         if output_format == 'pdf':
             from types import SimpleNamespace
             from .utils import generate_rapport_pdf
+
+            # Pour les agents en mode "toutes mes caisses", on ne doit pas afficher une caisse unique dans l'en-tête
+            caisse_for_pdf = None if (is_admin or multi_caisses_scope) else caisse
+
             rapobj = SimpleNamespace(
                 type_rapport=type_rapport,
-                caisse=None if is_admin else caisse,
+                caisse=caisse_for_pdf,
                 date_debut=date_debut,
                 date_fin=date_fin,
                 donnees=rapport,
             )
             pdf_bytes = generate_rapport_pdf(rapobj)
             response = HttpResponse(pdf_bytes, content_type='application/pdf')
-            label = 'toutes_caisses' if is_admin else (caisse.code if caisse else 'caisse')
+            if is_admin:
+                label = 'toutes_caisses'
+            elif multi_caisses_scope:
+                label = 'mes_caisses'
+            else:
+                label = caisse.code if caisse else 'caisse'
             response['Content-Disposition'] = f"attachment; filename=rapport_{type_rapport}_{label}_{datetime.now().strftime('%Y-%m-%d')}.pdf"
             return response
 
@@ -2717,10 +2989,15 @@ def generer_rapport_general_caisse(caisse, date_debut=None, date_fin=None):
     }
 
 
-def generer_rapport_general_global(date_debut=None, date_fin=None):
-    """Rapport général agrégé pour toutes les caisses, même structure que le frontend."""
+def generer_rapport_general_global(date_debut=None, date_fin=None, caisses_qs=None):
+    """Rapport général agrégé pour un ensemble de caisses (toutes par défaut),
+    même structure que le frontend.
+
+    - Si `caisses_qs` est None: toutes les caisses.
+    - Sinon: uniquement les caisses de ce queryset (utile pour les agents).
+    """
     from django.db.models import Count, Sum, Avg, Q
-    caisses = Caisse.objects.all()
+    caisses = caisses_qs if caisses_qs is not None else Caisse.objects.all()
     
     # Filtres de date pour chaque type de données
     filtres_date_membres = Q()
@@ -2736,10 +3013,10 @@ def generer_rapport_general_global(date_debut=None, date_fin=None):
         filtres_date_prets &= Q(date_demande__lte=date_fin)
         filtres_date_mouvements &= Q(date_mouvement__lte=date_fin)
     
-    # Appliquer les filtres de date
-    membres = Membre.objects.filter(filtres_date_membres)
-    prets = Pret.objects.filter(filtres_date_prets)
-    mouvements = MouvementFond.objects.filter(filtres_date_mouvements)
+    # Appliquer les filtres de date (limités aux caisses sélectionnées)
+    membres = Membre.objects.filter(caisse__in=caisses).filter(filtres_date_membres)
+    prets = Pret.objects.filter(caisse__in=caisses).filter(filtres_date_prets)
+    mouvements = MouvementFond.objects.filter(caisse__in=caisses).filter(filtres_date_mouvements)
 
     membres_stats = {
         'total': membres.count(),
@@ -2789,9 +3066,40 @@ def generer_rapport_general_global(date_debut=None, date_fin=None):
     }
 
     echeances_retard = {
-        'total_echeances_retard': Echeance.objects.filter(statut='EN_RETARD').count(),
-        'montant_retard': float(Echeance.objects.filter(statut='EN_RETARD').aggregate(total=Sum('montant_echeance'))['total'] or 0),
+        'total_echeances_retard': Echeance.objects.filter(pret__caisse__in=caisses, statut='EN_RETARD').count(),
+        'montant_retard': float(Echeance.objects.filter(pret__caisse__in=caisses, statut='EN_RETARD').aggregate(total=Sum('montant_echeance'))['total'] or 0),
     }
+
+    # Détail par caisse pour les rapports PDF : chaque caisse de l'agent (ou du système)
+    # avec quelques indicateurs clés
+    from django.db.models import Count as DJCount
+    membres_par_caisse = {
+        row['caisse_id']: row['nb']
+        for row in membres.values('caisse_id').annotate(nb=DJCount('id'))
+    }
+    prets_par_caisse = {
+        row['caisse_id']: {
+            'nb_prets': row['nb'],
+            'montant_total_prets': float(row['montant'] or 0),
+        }
+        for row in prets.values('caisse_id').annotate(
+            nb=DJCount('id'),
+            montant=Sum('montant_accord'),
+        )
+    }
+    caisses_details = []
+    for c in caisses:
+        stats_pret = prets_par_caisse.get(c.id, {})
+        caisses_details.append({
+            'code': c.code,
+            'nom': c.nom_association,
+            'statut': c.statut,
+            'fond_initial': float(c.fond_initial or 0),
+            'fond_disponible': float(c.fond_disponible or 0),
+            'nb_membres': membres_par_caisse.get(c.id, 0),
+            'nb_prets': stats_pret.get('nb_prets', 0),
+            'montant_total_prets': stats_pret.get('montant_total_prets', 0.0),
+        })
 
     return {
         'caisse': {
@@ -2800,6 +3108,7 @@ def generer_rapport_general_global(date_debut=None, date_fin=None):
             'date_creation': None,
             'statut': 'AGREGE',
         },
+        'caisses_details': caisses_details,
         'membres': membres_stats,
         'prets': prets_stats,
         'mouvements': mouvements_aggr,
@@ -2942,8 +3251,8 @@ def generer_rapport_financier_caisse(caisse, date_debut=None, date_fin=None):
     }
 
 
-def generer_rapport_financier_global(date_debut=None, date_fin=None):
-    """Rapport financier agrégé pour toutes les caisses."""
+def generer_rapport_financier_global(date_debut=None, date_fin=None, caisses_qs=None):
+    """Rapport financier agrégé pour un ensemble de caisses (toutes par défaut)."""
     from django.db.models import Sum, Q
     from django.utils import timezone
     start_dt = end_dt = None
@@ -2957,7 +3266,9 @@ def generer_rapport_financier_global(date_debut=None, date_fin=None):
     if end_dt:
         filtres_date &= Q(date_mouvement__lte=end_dt)
 
-    mouvements = MouvementFond.objects.filter(filtres_date).order_by('-date_mouvement')
+    caisses = caisses_qs if caisses_qs is not None else Caisse.objects.all()
+
+    mouvements = MouvementFond.objects.filter(caisse__in=caisses).filter(filtres_date).order_by('-date_mouvement')
     stats_mouvements = list(
         mouvements.values('type_mouvement').annotate(total=Sum('montant'), nombre=Count('id'))
     )
@@ -2976,12 +3287,12 @@ def generer_rapport_financier_global(date_debut=None, date_fin=None):
     from django.db.models import Sum as DSum, F, ExpressionWrapper, DecimalField
     from .models import Caisse, Pret
     # Agrégations robustes (montant_total_prets = EN_COURS + REMBOURSE + EN_RETARD)
-    total_fond_initial = Caisse.objects.aggregate(total=DSum('fond_initial'))['total'] or 0
-    total_fond_disponible = Caisse.objects.aggregate(total=DSum('fond_disponible'))['total'] or 0
-    total_prets_accordes = Pret.objects.filter(statut__in=['EN_COURS', 'REMBOURSE', 'EN_RETARD']).aggregate(total=DSum('montant_accord'))['total'] or 0
-    total_prets_rembourses = Pret.objects.filter(statut='REMBOURSE').aggregate(total=DSum('montant_accord'))['total'] or 0
-    total_prets_octroyes = Pret.objects.filter(statut='EN_COURS').aggregate(total=DSum('montant_accord'))['total'] or 0
-    restant_qs = Pret.objects.filter(statut__in=['EN_COURS', 'EN_RETARD']).annotate(
+    total_fond_initial = caisses.aggregate(total=DSum('fond_initial'))['total'] or 0
+    total_fond_disponible = caisses.aggregate(total=DSum('fond_disponible'))['total'] or 0
+    total_prets_accordes = Pret.objects.filter(caisse__in=caisses, statut__in=['EN_COURS', 'REMBOURSE', 'EN_RETARD']).aggregate(total=DSum('montant_accord'))['total'] or 0
+    total_prets_rembourses = Pret.objects.filter(caisse__in=caisses, statut='REMBOURSE').aggregate(total=DSum('montant_accord'))['total'] or 0
+    total_prets_octroyes = Pret.objects.filter(caisse__in=caisses, statut='EN_COURS').aggregate(total=DSum('montant_accord'))['total'] or 0
+    restant_qs = Pret.objects.filter(caisse__in=caisses, statut__in=['EN_COURS', 'EN_RETARD']).annotate(
         restant=ExpressionWrapper((F('montant_accord') - F('montant_rembourse')), output_field=DecimalField(max_digits=15, decimal_places=2))
     )
     total_prets_restants = restant_qs.aggregate(total=DSum('restant'))['total'] or 0
@@ -2990,14 +3301,14 @@ def generer_rapport_financier_global(date_debut=None, date_fin=None):
         'fond_initial': float(total_fond_initial),
         'fond_disponible': float(total_fond_disponible),
         'montant_total_prets': float(total_prets_accordes),
-        'montant_total_rembourse': float(Pret.objects.aggregate(total=DSum('montant_rembourse'))['total'] or 0),
+        'montant_total_rembourse': float(Pret.objects.filter(caisse__in=caisses).aggregate(total=DSum('montant_rembourse'))['total'] or 0),
         'montant_total_restant': float(total_prets_restants),
         'solde_disponible': float((total_fond_initial or 0) + (total_fond_disponible or 0)),
     }
 
     # Synthèse par caisse (pour affichage détaillé dans le PDF)
     par_caisse = []
-    for c in Caisse.objects.all().order_by('nom_association'):
+    for c in caisses.order_by('nom_association'):
         total_prets_caisse = (
             (Pret.objects.filter(caisse=c, statut='EN_COURS').aggregate(total=Sum('montant_accord'))['total'] or 0)
             + (Pret.objects.filter(caisse=c, statut='REMBOURSE').aggregate(total=Sum('montant_accord'))['total'] or 0)
@@ -3123,8 +3434,8 @@ def generer_rapport_prets_caisse(caisse, date_debut=None, date_fin=None):
     }
 
 
-def generer_rapport_prets_global(date_debut=None, date_fin=None):
-    """Rapport des prêts agrégé pour toutes les caisses."""
+def generer_rapport_prets_global(date_debut=None, date_fin=None, caisses_qs=None):
+    """Rapport des prêts agrégé pour un ensemble de caisses (toutes par défaut)."""
     from django.db.models import Sum, Avg, Q
     filtres_date = Q()
     if date_debut:
@@ -3132,7 +3443,9 @@ def generer_rapport_prets_global(date_debut=None, date_fin=None):
     if date_fin:
         filtres_date &= Q(date_demande__lte=date_fin)
 
-    prets = Pret.objects.filter(filtres_date).select_related('membre', 'caisse')
+    caisses = caisses_qs if caisses_qs is not None else Caisse.objects.all()
+
+    prets = Pret.objects.filter(caisse__in=caisses).filter(filtres_date).select_related('membre', 'caisse')
     stats_par_statut = list(prets.values('statut').annotate(nombre=Count('id'), montant_total=Sum('montant_accord'), montant_moyen=Avg('montant_accord')))
     stats_par_caisse = list(prets.values('caisse__nom_association').annotate(nombre_prets=Count('id'), montant_total=Sum('montant_accord')))
     prets_retard = prets.filter(statut='EN_RETARD').annotate(montant_retard=Sum('echeances__montant_echeance', filter=Q(echeances__statut='EN_RETARD')))
@@ -3238,7 +3551,8 @@ def generer_rapport_membres_caisse(caisse, date_debut=None, date_fin=None):
     }
 
 
-def generer_rapport_membres_global(date_debut=None, date_fin=None):
+def generer_rapport_membres_global(date_debut=None, date_fin=None, caisses_qs=None):
+    """Rapport membres agrégé pour un ensemble de caisses (toutes par défaut)."""
     from django.db.models import Count, Sum, Q
     filtres_date = Q()
     if date_debut:
@@ -3246,7 +3560,9 @@ def generer_rapport_membres_global(date_debut=None, date_fin=None):
     if date_fin:
         filtres_date &= Q(date_adhesion__lte=date_fin)
 
-    membres = Membre.objects.filter(filtres_date)
+    caisses = caisses_qs if caisses_qs is not None else Caisse.objects.all()
+
+    membres = Membre.objects.filter(caisse__in=caisses).filter(filtres_date)
     stats_par_statut = list(membres.values('statut').annotate(nombre=Count('id')))
     stats_par_sexe = list(membres.values('sexe').annotate(nombre=Count('id')))
     stats_par_role = list(membres.values('role').annotate(nombre=Count('id')))
@@ -3366,7 +3682,8 @@ def generer_rapport_echeances_caisse(caisse, date_debut=None, date_fin=None):
     }
 
 
-def generer_rapport_echeances_global(date_debut=None, date_fin=None):
+def generer_rapport_echeances_global(date_debut=None, date_fin=None, caisses_qs=None):
+    """Rapport échéances agrégé pour un ensemble de caisses (toutes par défaut)."""
     from django.db.models import Sum, Q
     from django.utils import timezone
     filtres_date = Q()
@@ -3375,7 +3692,9 @@ def generer_rapport_echeances_global(date_debut=None, date_fin=None):
     if date_fin:
         filtres_date &= Q(date_echeance__lte=date_fin)
 
-    echeances = Echeance.objects.filter(filtres_date).select_related('pret', 'pret__membre', 'pret__caisse')
+    caisses = caisses_qs if caisses_qs is not None else Caisse.objects.all()
+
+    echeances = Echeance.objects.filter(pret__caisse__in=caisses).filter(filtres_date).select_related('pret', 'pret__membre', 'pret__caisse')
     stats_par_statut = list(echeances.values('statut').annotate(nombre=Count('id'), montant_total=Sum('montant_echeance'), montant_paye=Sum('montant_paye')))
     echeances_retard = echeances.filter(date_echeance__lt=timezone.now().date(), statut__in=['A_PAYER', 'PARTIELLEMENT_PAYE'])
     date_limite = timezone.now().date() + timedelta(days=30)
@@ -3523,14 +3842,17 @@ class TransfertCaisseViewSet(viewsets.ModelViewSet):
         """Filtrer les transferts selon les permissions de l'utilisateur"""
         queryset = super().get_queryset()
         
-        # Si l'utilisateur n'est pas admin, filtrer par sa caisse
+        # Si l'utilisateur n'est pas admin, filtrer par ses caisses
         if not self.request.user.is_superuser:
-            caisse_user = get_user_caisse(self.request.user)
-            if caisse_user:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                caisse_ids = user_caisses.values_list('id', flat=True)
                 queryset = queryset.filter(
-                    models.Q(caisse_source=caisse_user) | 
-                    models.Q(caisse_destination=caisse_user)
+                    models.Q(caisse_source_id__in=caisse_ids) | 
+                    models.Q(caisse_destination_id__in=caisse_ids)
                 )
+            else:
+                queryset = queryset.none()
         
         return queryset
     
@@ -4709,15 +5031,11 @@ class DepenseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             return Depense.objects.all()
-        # Pour les utilisateurs non admin: afficher les dépenses de leur caisse
-        try:
-            profil = getattr(user, 'profil_membre', None)
-            if profil and profil.caisse_id:
-                return Depense.objects.filter(caisse_id=profil.caisse_id)
-        except Exception:
-            pass
-        # Fallback: pour les agents, filtrer par leurs caisses liées
-        return Depense.objects.filter(caisse__agent__utilisateur=user)
+        # Pour les utilisateurs non admin: afficher les dépenses de leurs caisses
+        user_caisses = get_user_caisses(user)
+        if user_caisses.exists():
+            return Depense.objects.filter(caisse__in=user_caisses)
+        return Depense.objects.none()
 
     def perform_create(self, serializer):
         # Récupérer la caisse et le montant avant de sauvegarder
@@ -5114,10 +5432,19 @@ class ExerciceCaisseViewSet(viewsets.ModelViewSet):
     ordering = ['-date_debut']
     
     def get_queryset(self):
-        """Filtrer par caisse si spécifiée"""
+        """Filtrer par caisse si spécifiée, et selon les permissions de l'utilisateur"""
         queryset = super().get_queryset().select_related('caisse')
-        caisse_id = self.request.query_params.get('caisse')
         
+        # Filtrer selon les permissions de l'utilisateur
+        if not self.request.user.is_superuser:
+            user_caisses = get_user_caisses(self.request.user)
+            if user_caisses.exists():
+                queryset = queryset.filter(caisse__in=user_caisses)
+            else:
+                queryset = queryset.none()
+        
+        # Appliquer le filtre de caisse spécifique si fourni
+        caisse_id = self.request.query_params.get('caisse')
         if caisse_id:
             queryset = queryset.filter(caisse_id=caisse_id)
             

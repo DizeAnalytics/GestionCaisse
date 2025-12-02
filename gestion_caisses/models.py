@@ -19,8 +19,8 @@ def validate_carte_electeur_optional(value):
         return
     # Valider le format uniquement si fourni
     validator = RegexValidator(
-        regex=r'^(?!-)(?!.*--)(?=.*-)[A-Z0-9-]{26}(?<!-)$',
-        message="Format invalide. Utiliser exactement 26 caractères (A-Z, 0-9 et '-') sans tiret au début/fin ni doubles tirets."
+        regex=r'^(?!-)(?!.*--)(?=.*-)[A-Z0-9-]{27}(?<!-)$',
+        message="Format invalide. Utiliser exactement 27 caractères (A-Z, 0-9 et '-') sans tiret au début/fin ni doubles tirets."
     )
     validator(value)
 
@@ -247,11 +247,11 @@ class Agent(models.Model):
     possede_carte_electeur = models.BooleanField(default=True, verbose_name="Possède une carte d'électeur")
     carte_electeur_valide = models.BooleanField(default=False, verbose_name="Carte d'électeur valide")
     numero_carte_electeur = models.CharField(
-        max_length=26,
+        max_length=27,
         unique=True,
         blank=True,
         null=True,
-        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets) - Optionnel",
+        help_text="Numéro de carte d'électeur: exactement 27 caractères (A-Z, 0-9, tirets) - Optionnel",
         validators=[validate_carte_electeur_optional]
     )
     date_naissance = models.DateField()
@@ -684,10 +684,10 @@ class Membre(models.Model):
     possede_carte_electeur = models.BooleanField(default=True, verbose_name="Possède une carte d'électeur")
     carte_electeur_valide = models.BooleanField(default=False, verbose_name="Carte d'électeur valide")
     numero_carte_electeur = models.CharField(
-        max_length=26,
+        max_length=27,
         blank=True,
         null=True,
-        help_text="Numéro de carte d'électeur: exactement 26 caractères (A-Z, 0-9, tirets) - Optionnel",
+        help_text="Numéro de carte d'électeur: exactement 27 caractères (A-Z, 0-9, tirets) - Optionnel",
         validators=[validate_carte_electeur_optional]
     )
     
@@ -848,8 +848,12 @@ class Pret(models.Model):
     # Détails financiers
     montant_demande = models.DecimalField(max_digits=15, decimal_places=2)
     montant_accord = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    taux_interet = models.DecimalField(max_digits=5, decimal_places=2, default=0,
-                                     validators=[MinValueValidator(0), MaxValueValidator(100)])
+    taux_interet = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
     
     # Durée et échéances
     duree_mois = models.PositiveIntegerField(help_text="Durée en mois")
@@ -1041,17 +1045,28 @@ class Pret(models.Model):
         if self.montant_accord:
             from decimal import Decimal
             montant_principal = self.montant_accord
-            montant_interet = montant_principal * (self.taux_interet / Decimal('100'))
+            montant_interet = self.montant_interet_calcule
             return montant_principal + montant_interet
         return 0
     
     @property
     def montant_interet_calcule(self):
         """Calcule le montant des intérêts"""
-        if self.montant_accord:
-            from decimal import Decimal
-            return self.montant_accord * (self.taux_interet / Decimal('100'))
-        return 0
+        from decimal import Decimal
+        if not self.montant_accord or not self.taux_interet or not self.duree_mois:
+            return Decimal('0')
+        return self.montant_interet_mensuel * Decimal(str(self.duree_mois))
+
+    @property
+    def montant_interet_mensuel(self):
+        """Intérêt appliqué chaque mois (taux mensuel)."""
+        from decimal import Decimal
+        if not self.montant_accord or not self.taux_interet:
+            return Decimal('0')
+        taux_decimal = Decimal(str(self.taux_interet)) / Decimal('100')
+        if taux_decimal <= 0:
+            return Decimal('0')
+        return Decimal(str(self.montant_accord)) * taux_decimal
     
     @property
     def est_en_retard(self):

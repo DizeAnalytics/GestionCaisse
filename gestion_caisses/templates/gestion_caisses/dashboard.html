@@ -115,6 +115,18 @@
 .logout-btn:active {
   transform: translateY(0);
 }
+.agent-caisse-select,
+.agent-caisse-select-mobile {
+  background-color: #0f172a !important; /* fond foncé pour contraster */
+  color: #f9fafb !important;            /* texte très clair et lisible */
+  border-color: #4b5563 !important;
+}
+
+.agent-caisse-select option,
+.agent-caisse-select-mobile option {
+  color: #0f172a;         /* texte foncé dans la liste déroulante */
+  background-color: #f9fafb;
+}
 .nav-menu { display: flex; flex-direction: column; gap: 8px }
 .nav-tab { background: transparent; color: #cbd5e1; border: none; padding: 12px 14px; text-align: left; border-radius: 8px }
 .nav-tab.active, .nav-tab:hover { background: rgba(255,255,255,0.12); color: #fff }
@@ -138,6 +150,26 @@
 /* Centrage des modals */
 .modal-dialog { display: flex; align-items: center; min-height: calc(100vh - 2rem); }
 .modal-dialog .modal-content { margin: auto; }
+
+/* Rendre tous les formulaires modaux confortables, avec footer toujours visible */
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+.modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.modal-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background-color: #fff;
+}
+
 /* Assurer la superposition correcte des modales et éviter le clipping */
 .modal { z-index: 9999 !important; overflow: visible !important; }
 .modal-backdrop { z-index: 9990 !important; }
@@ -865,6 +897,14 @@
       <div class="user-avatar">👤</div>
       <div class="user-name" id="user-name">{{ user.first_name }} {{ user.last_name }}</div>
       <div class="user-role" id="user-role">{{ user_role }}</div>
+      {% if user_role == 'Agent' %}
+      <div class="agent-caisse-selector" style="margin-top: 15px; margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #ccc;">Caisse active :</label>
+        <select id="agent-caisse-select" class="form-select form-select-sm agent-caisse-select" style="width: 100%; font-size: 0.9em;">
+          <option value="">Chargement...</option>
+        </select>
+      </div>
+      {% endif %}
       <button class="logout-btn" onclick="handleLogout()">🚪 Déconnexion</button>
     </div>
     <nav class="nav-menu">
@@ -891,7 +931,29 @@
 
   <div class="main-content">
     <div id="dashboard" class="content-section active">
-      <h2>📊 Tableau de Bord — {{ caisse_nom }}</h2>
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h2 id="dashboard-title" class="m-0">📊 Tableau de Bord — {{ caisse_nom }}</h2>
+        {% if user_role == 'Agent' %}
+        <!-- Sélecteur de caisse actif modernisé pour mobile -->
+        <div class="d-md-none w-100">
+          <div class="card border-0 shadow-sm rounded-3 p-2" style="background: rgba(15, 23, 42, 0.85);">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="small text-uppercase text-muted">Caisse active</span>
+              <span id="agent-active-caisse-label-mobile" class="badge bg-primary text-wrap" style="max-width: 70%; font-size: 0.75rem;">
+                Sélectionner une caisse
+              </span>
+            </div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-transparent border-secondary text-primary-emphasis">🏦</span>
+              <select id="agent-caisse-select-mobile" class="form-select form-select-sm border-secondary agent-caisse-select-mobile"
+                      onchange="if (typeof updateMobileActiveCaisseLabel === 'function') { updateMobileActiveCaisseLabel(); }">
+                <option value="">Chargement...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon">🏦</div><div><div class="stat-number" id="total-caisses">0</div><div class="stat-label">Total Caisses</div></div></div>
         <div class="stat-card"><div class="stat-icon">👥</div><div><div class="stat-number" id="total-membres">0</div><div class="stat-label">Total Membres</div></div></div>
@@ -1064,7 +1126,10 @@
     <div id="membres" class="content-section">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h2 class="m-0">👥 Gestion des Membres</h2>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <select id="membreCaisseFilter" class="form-select form-select-sm" style="min-width: 220px;" onchange="filterMembers()">
+            <option value="">Toutes les caisses</option>
+          </select>
           <input id="membreSearch" class="form-control search-bar" placeholder="Rechercher un membre..." oninput="filterMembers()" />
           <button class="btn btn-success" onclick="openMembreModal()">+ Nouveau Membre</button>
           <button class="btn btn-info" onclick="generateMembresListePDF(USER_CAISE_ID)" title="Générer la liste complète des membres en PDF">
@@ -1425,7 +1490,19 @@
                 <option value="echeances">Rapport des Échéances</option>
               </select>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
+            {% if user_role == 'Agent' %}
+            <div class="col-md-3">
+              <label for="rapport-caisse-select" class="form-label">Caisse pour les rapports</label>
+              <select id="rapport-caisse-select" class="form-select form-select-sm">
+                <option value="">Ma caisse active</option>
+                <option value="_ALL_MY_">Toutes mes caisses</option>
+              </select>
+              <small class="text-muted d-block mt-1" style="font-size: 0.75rem;">
+                Uniquement vos propres caisses sont affichées (ou toutes vos caisses).
+              </small>
+            </div>
+            {% endif %}
+            <div class="col-md-3 d-flex align-items-end mt-3 mt-md-0">
               <button class="btn btn-primary" onclick="chargerRapport()">
                 <i class="fas fa-search"></i> Charger
               </button>
@@ -2417,7 +2494,150 @@ async function fetchUserContext(){
     const r = await fetch('/gestion-caisses/api/user-context/', { headers: { 'X-CSRFToken': getCSRFToken() }});
     const data = await r.json();
     USER_CAISE_ID = data.caisse_id || null;
-  }catch(e){ USER_CAISE_ID = null; }
+    
+    // Si c'est un agent, charger les caisses dans le sélecteur
+    const userRole = data.user?.role || '';
+    if (userRole === 'Agent' && data.caisses && data.caisses.length > 0) {
+      await loadAgentCaissesSelector(data.caisses, data.caisse_id);
+    }
+    
+    return data;
+  }catch(e){ 
+    USER_CAISE_ID = null; 
+    return null;
+  }
+}
+
+// Met à jour le badge mobile avec le nom de la caisse sélectionnée
+function updateMobileActiveCaisseLabel() {
+  const mobileSelect = document.getElementById('agent-caisse-select-mobile');
+  const labelEl = document.getElementById('agent-active-caisse-label-mobile');
+  if (!mobileSelect || !labelEl) return;
+
+  const selectedOption = mobileSelect.options[mobileSelect.selectedIndex];
+  const text = selectedOption && selectedOption.text ? selectedOption.text.trim() : '';
+  labelEl.textContent = text || 'Aucune caisse';
+}
+
+// Charger le sélecteur de caisses pour les agents (desktop + mobile)
+async function loadAgentCaissesSelector(caisses, selectedCaisseId = null) {
+  const desktopSelect = document.getElementById('agent-caisse-select');
+  const mobileSelect = document.getElementById('agent-caisse-select-mobile');
+  const rapportSelect = document.getElementById('rapport-caisse-select');
+  if (!desktopSelect && !mobileSelect && !rapportSelect) return;
+  
+  if (!caisses || caisses.length === 0) {
+    const emptyHtml = '<option value=\"\">Aucune caisse</option>';
+    if (desktopSelect) desktopSelect.innerHTML = emptyHtml;
+    if (mobileSelect) mobileSelect.innerHTML = emptyHtml;
+    return;
+  }
+  
+  // Déterminer la caisse sélectionnée par défaut
+  const effectiveSelectedId = selectedCaisseId || (typeof USER_CAISE_ID !== 'undefined' ? USER_CAISE_ID : null) || (caisses[0]?.id || null);
+  
+  const buildOptions = () => {
+    return caisses.map(caisse => {
+      const selectedAttr = (effectiveSelectedId && caisse.id === effectiveSelectedId) ? ' selected' : '';
+      const label = `${caisse.code || ''} - ${caisse.nom_association || ''}`.trim();
+      return `<option value=\"${caisse.id}\"${selectedAttr}>${label}</option>`;
+    }).join('');
+  };
+  
+  const optionsHtml = buildOptions();
+  if (desktopSelect) {
+    desktopSelect.innerHTML = optionsHtml;
+    desktopSelect.value = String(effectiveSelectedId || '');
+  }
+  if (mobileSelect) {
+    mobileSelect.innerHTML = optionsHtml;
+    mobileSelect.value = String(effectiveSelectedId || '');
+    // Mettre à jour le badge mobile après chargement des options
+    updateMobileActiveCaisseLabel();
+  }
+  if (rapportSelect) {
+    // Conserver l'option spéciale "Toutes mes caisses" si présente
+    const baseOptions = '<option value=\"\">Ma caisse active</option><option value=\"_ALL_MY_\">Toutes mes caisses</option>';
+    rapportSelect.innerHTML = baseOptions + optionsHtml;
+    // Par défaut, on se cale sur la caisse active (ou laisse _ALL_MY_ si déjà choisi)
+    if (rapportSelect.value !== '_ALL_MY_') {
+      rapportSelect.value = String(effectiveSelectedId || '');
+    }
+  }
+  
+  // Fonction commune de gestion du changement de caisse
+  const handleChange = async (newCaisseId) => {
+    const idNum = Number(newCaisseId || 0);
+    if (!idNum || idNum === USER_CAISE_ID) return;
+    USER_CAISE_ID = idNum;
+    // Synchroniser les deux sélecteurs
+    if (desktopSelect && desktopSelect.value !== String(idNum)) {
+      desktopSelect.value = String(idNum);
+    }
+    if (mobileSelect && mobileSelect.value !== String(idNum)) {
+      mobileSelect.value = String(idNum);
+      updateMobileActiveCaisseLabel();
+    }
+    if (rapportSelect && rapportSelect.value !== String(idNum)) {
+      rapportSelect.value = String(idNum);
+    }
+    // Recharger toutes les données avec la nouvelle caisse
+    await reloadDataForSelectedCaisse();
+    showToast('Caisse changée avec succès', 'success');
+  };
+  
+  if (desktopSelect) {
+    desktopSelect.onchange = function () {
+      handleChange(this.value);
+    };
+  }
+  if (mobileSelect) {
+    mobileSelect.onchange = function () {
+      handleChange(this.value);
+    };
+  }
+}
+
+// Recharger toutes les données quand l'agent change de caisse
+async function reloadDataForSelectedCaisse() {
+  try {
+    // Recharger les statistiques du dashboard
+    if (typeof loadDashboardStats === 'function') {
+      await loadDashboardStats();
+    }
+    
+    // Recharger les membres
+    if (typeof loadMembers === 'function') {
+      await loadMembers();
+    }
+    
+    // Recharger les prêts
+    if (typeof loadPrets === 'function') {
+      await loadPrets();
+    }
+    
+    // Recharger les séances
+    if (typeof refreshSeances === 'function') {
+      await refreshSeances();
+    }
+    
+    // Recharger les cotisations
+    if (typeof refreshCotisations === 'function') {
+      await refreshCotisations();
+    }
+    
+    // Recharger les dépenses
+    if (typeof chargerDepenses === 'function') {
+      await chargerDepenses();
+    }
+    
+    // Recharger les informations de la caisse
+    if (typeof loadCaisse === 'function') {
+      await loadCaisse();
+    }
+  } catch(e) {
+    console.error('Erreur lors du rechargement des données:', e);
+  }
 }
 async function loadCaisse(){
   const wrap = document.getElementById('caisse-card');
@@ -2433,17 +2653,17 @@ async function loadCaisse(){
   }
   
   try {
-    // Charger les informations de base de la caisse
-    const res = await fetch('/gestion-caisses/api/caisses/', { headers: { 'X-CSRFToken': getCSRFToken() }});
-    const data = await res.json();
-    const caisse = (data.results && data.results[0]) || data[0] || data;
+    // Charger les informations de base de la caisse sélectionnée (endpoint détail)
+    const res = await fetch(`/gestion-caisses/api/caisses/${USER_CAISE_ID}/`, { headers: { 'X-CSRFToken': getCSRFToken() }});
+    const caisse = await res.json();
     if (!caisse || !caisse.id){ 
       wrap.innerHTML = '<div class="alert alert-warning mt-2">Caisse introuvable.</div>'; 
       return; 
     }
     
-    // Charger les prêts pour calculer les statistiques
-    const pretsRes = await fetch('/gestion-caisses/api/prets/', { headers: { 'X-CSRFToken': getCSRFToken() }});
+    // Charger les prêts pour calculer les statistiques (uniquement pour cette caisse)
+    const pretsParams = new URLSearchParams({ caisse: USER_CAISE_ID });
+    const pretsRes = await fetch(`/gestion-caisses/api/prets/?${pretsParams.toString()}`, { headers: { 'X-CSRFToken': getCSRFToken() }});
     const pretsData = await pretsRes.json();
     const prets = pretsData.results || pretsData || [];
     
@@ -2460,6 +2680,14 @@ async function loadCaisse(){
     const montantTotalRembourse = prets.filter(p => p.statut === 'REMBOURSE')
       .reduce((sum, p) => sum + (parseFloat(p.montant_rembourse || 0)), 0);
     
+    // Mettre à jour le titre du tableau de bord avec le nom et le montant de la caisse
+    const dashboardTitle = document.getElementById('dashboard-title');
+    const montantCaisse = Number(caisse.fond_disponible || 0).toLocaleString('fr-FR');
+    if (dashboardTitle) {
+      dashboardTitle.textContent = `📊 Tableau de Bord — ${caisse.nom_association || ''} (${montantCaisse} FCFA)`;
+    }
+
+    // Mettre à jour la carte principale de la caisse
     wrap.innerHTML = `
       <div class="card shadow-sm mb-4">
         <div class="card-body">
@@ -2498,7 +2726,7 @@ async function loadCaisse(){
             </div>
             <div class="col-6 col-lg-3">
               <div class="text-center p-3 bg-light rounded">
-                <div class="h4 text-warning mb-1">${Number(caisse.fond_disponible||0).toLocaleString('fr-FR')}</div>
+                <div class="h4 text-warning mb-1">${montantCaisse}</div>
                 <div class="text-muted small">Fonds disponibles (FCFA)</div>
               </div>
             </div>
@@ -2966,14 +3194,40 @@ async function submitCaisse(id){
 }
 
 // ===== Membres (CRUD minimal) =====
+async function loadMembreCaisses(){
+  const sel = document.getElementById('membreCaisse');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  try {
+    const res = await fetch(`${API_BASE}/caisses/`);
+    const data = await res.json();
+    sel.innerHTML = '<option value="">Sélectionner une caisse</option>';
+    (data.results||data).forEach(c=>{ 
+      const opt = document.createElement('option'); 
+      opt.value = c.id; 
+      opt.textContent = `${c.code || ''} ${c.nom_association || ''}`.trim(); 
+      sel.appendChild(opt); 
+    });
+  } catch (e) {
+    console.error('Erreur chargement caisses membres:', e);
+    sel.innerHTML = '<option value="">Erreur lors du chargement</option>';
+  }
+}
+
 function openMembreModal(id){
   document.getElementById('membreError')?.style && (document.getElementById('membreError').style.display='none');
   const form = document.getElementById('membreForm');
+  const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
   
   // Ne faire reset que si c'est un nouveau membre (pas d'ID)
   if (!id) {
     form.reset();
     form.id.value = '';
+    
+    // Charger les caisses pour les admins lors de la création d'un nouveau membre
+    if (isAdmin) {
+      loadMembreCaisses().catch(e => console.error('Erreur chargement caisses:', e));
+    }
     
     // Initialiser les valeurs par défaut pour nouveau membre
     const sexeSelect = form.querySelector('select[name="sexe"]');
@@ -3012,9 +3266,24 @@ function closeMembreModal(){ const m = document.getElementById('membreModal'); b
 
 async function submitMembre(){
   try{
-    if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
     const form = document.getElementById('membreForm');
     const id = form.id.value;
+    const isAdmin = document.getElementById('user-role')?.textContent?.trim() === 'Administrateur';
+    
+    // Déterminer la caisse : si admin, utiliser la caisse sélectionnée, sinon USER_CAISE_ID
+    let caisseId;
+    if (isAdmin && !id) {
+      // Pour la création d'un nouveau membre par admin, utiliser le champ membreCaisse
+      const membreCaisseSelect = document.getElementById('membreCaisse');
+      if (!membreCaisseSelect || !membreCaisseSelect.value) {
+        throw new Error('Veuillez sélectionner une caisse.');
+      }
+      caisseId = Number(membreCaisseSelect.value);
+    } else {
+      // Pour les non-admins ou la modification, utiliser USER_CAISE_ID
+      if (!USER_CAISE_ID) throw new Error('Aucune caisse liée');
+      caisseId = USER_CAISE_ID;
+    }
     
     if (id) {
       // Modification : utiliser JSON pour les données textuelles
@@ -3032,7 +3301,7 @@ async function submitMembre(){
         sexe: formData.get('sexe'),
         role: formData.get('role'),
         statut: formData.get('statut'),
-        caisse_id: USER_CAISE_ID
+        caisse_id: caisseId
       };
       
       const r = await fetch(`/gestion-caisses/api/membres/${id}/`, { 
@@ -3051,7 +3320,7 @@ async function submitMembre(){
     } else {
       // Création : utiliser FormData pour inclure la photo
       const formData = new FormData(form);
-      formData.append('caisse_id', USER_CAISE_ID);
+      formData.append('caisse_id', caisseId);
       
       const r = await fetch('/gestion-caisses/api/membres/', { 
         method: 'POST', 
@@ -3083,6 +3352,14 @@ async function loadMembers(){
   const data = await r.json();
   CURRENT_MEMBRES = data.results || data || [];
   if (!CURRENT_MEMBRES.length){ container.innerHTML = '<div class="alert alert-light">Aucun membre.</div>'; return; }
+
+  // Mettre à jour le filtre par caisse (à partir des membres chargés)
+  const caisseFilter = document.getElementById('membreCaisseFilter');
+  if (caisseFilter) {
+    const caisses = Array.from(new Set((CURRENT_MEMBRES || []).map(m => m.caisse_nom).filter(Boolean))).sort();
+    caisseFilter.innerHTML = '<option value=\"\">Toutes les caisses</option>' + caisses.map(n => `<option value=\"${n}\">${n}</option>`).join('');
+  }
+
   container.innerHTML = '<div class="row g-3"></div>';
   const row = container.firstElementChild;
   CURRENT_MEMBRES.forEach(m=>{
@@ -3095,7 +3372,8 @@ async function loadMembers(){
             <h5 class='card-title mb-1'>${m.nom_complet}</h5>
             <span class='badge ${m.statut==='ACTIF'?'bg-success':'bg-secondary'}'>${m.statut}</span>
           </div>
-          <div class='text-muted mb-2'>Rôle: ${m.role}</div>
+          <div class='text-muted mb-1'>Rôle: ${m.role}</div>
+          <div class='small text-muted mb-1'>Caisse: ${m.caisse_nom || '-'}</div>
           <div class='small text-muted'>Téléphone: ${m.numero_telephone||'-'}</div>
           <div class='mt-3 d-flex gap-2'>
             <button class='btn btn-sm btn-outline-primary' onclick='prefillMembre(${m.id})'>Modifier</button>
@@ -3111,7 +3389,15 @@ async function loadMembers(){
 
 function filterMembers(){
   const q = (document.getElementById('membreSearch').value||'').toLowerCase();
-  const list = CURRENT_MEMBRES.filter(m => (m.nom_complet||'').toLowerCase().includes(q) || (m.numero_telephone||'').toLowerCase().includes(q));
+  const caisseSelect = document.getElementById('membreCaisseFilter');
+  const caisseFilter = (caisseSelect && caisseSelect.value ? caisseSelect.value.toLowerCase() : '');
+
+  const list = CURRENT_MEMBRES.filter(m => {
+    const matchesText = (m.nom_complet||'').toLowerCase().includes(q) || (m.numero_telephone||'').toLowerCase().includes(q);
+    const caisseName = (m.caisse_nom || '').toLowerCase();
+    const matchesCaisse = !caisseFilter || caisseName === caisseFilter;
+    return matchesText && matchesCaisse;
+  });
   const container = document.getElementById('membres-content');
   if (!list.length){ container.innerHTML = '<div class="alert alert-light mt-3">Aucun membre ne correspond.</div>'; return; }
   container.innerHTML = '<div class="row g-3"></div>';
@@ -3126,7 +3412,8 @@ function filterMembers(){
             <h5 class='card-title mb-1'>${m.nom_complet}</h5>
             <span class='badge ${m.statut==='ACTIF'?'bg-success':'bg-secondary'}'>${m.statut}</span>
           </div>
-          <div class='text-muted mb-2'>Rôle: ${m.role}</div>
+          <div class='text-muted mb-1'>Rôle: ${m.role}</div>
+          <div class='small text-muted mb-1'>Caisse: ${m.caisse_nom || '-'}</div>
           <div class='small text-muted'>Téléphone: ${m.numero_telephone||'-'}</div>
           <div class='mt-3 d-flex gap-2'>
             <button class='btn btn-sm btn-outline-primary' onclick='prefillMembre(${m.id})'>Modifier</button>
@@ -3256,7 +3543,12 @@ function openPretModal(id){
     }
   });
 }
-function closePretModal(){ const m = document.getElementById('pretModal'); bootstrap.Modal.getInstance(m)?.hide(); }
+function closePretModal(){
+  const m = document.getElementById('pretModal');
+  bootstrap.Modal.getInstance(m)?.hide();
+  const preview = document.getElementById('interestPreview');
+  if (preview) preview.style.display = 'none';
+}
 
 async function loadPretMembres(caisseId = null){
   const sel = document.getElementById('pretMembre');
@@ -3376,7 +3668,18 @@ async function submitPret(){
 async function loadPrets(){
   const container = document.getElementById('prets-content');
   container.innerHTML = '<div class="text-muted">Chargement...</div>';
-  const r = await fetch('/gestion-caisses/api/prets/', { headers:{ 'X-CSRFToken': getCSRFToken() }});
+  // Déterminer si l'utilisateur est administrateur
+  const roleText = document.getElementById('user-role')?.textContent?.trim() || '';
+  const isAdmin = roleText === 'Administrateur';
+
+  // Pour les agents et autres non-admins, filtrer par la caisse active si disponible
+  let url = '/gestion-caisses/api/prets/';
+  if (!isAdmin && typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+    const params = new URLSearchParams({ caisse: USER_CAISE_ID });
+    url = `/gestion-caisses/api/prets/?${params.toString()}`;
+  }
+
+  const r = await fetch(url, { headers:{ 'X-CSRFToken': getCSRFToken() }});
   const data = await r.json();
   const prets = data.results || data;
   // (supprimé) mise à jour graph dans l'onglet Prêts
@@ -3384,7 +3687,10 @@ async function loadPrets(){
   container.innerHTML = '<div class="row g-3"></div>';
   const row = container.firstElementChild;
   prets.forEach(p=>{
-    const totalARemb = Number(p.total_a_rembourser||0);
+    const principalReference = Number(p.montant_accord || p.montant_demande || 0);
+    const interetTotal = Number(p.interet_total ?? ((p.total_a_rembourser || 0) - principalReference)) || 0;
+    const interetMensuel = p.duree_mois ? (interetTotal / Number(p.duree_mois || 1)) : interetTotal;
+    const totalARemb = Number(p.total_a_rembourser|| (principalReference + interetTotal));
     const montantRestant = Number(p.montant_restant||0);
     let ratio = 0;
     if (totalARemb > 0) {
@@ -3405,23 +3711,21 @@ async function loadPrets(){
             <span class='badge ${statusClass}'>${statutLabel}</span>
             <div class='text-end'>
               <div class='text-muted'>${p.numero_pret||''}</div>
-              {% if user_role == 'Administrateur' %}
               <div class='small text-secondary'>${p.caisse_code || p.caisse?.code || ''} — ${p.caisse_nom || p.caisse?.nom_association || ''}</div>
-              {% endif %}
             </div>
           </div>
           <h5 class='mt-2 mb-1'>${p.membre_nom || p.membre?.nom_complet || ''}</h5>
           <div class='small text-muted'>Montant demandé: ${Number(p.montant_demande||0).toLocaleString('fr-FR')} FCFA</div>
-          ${p.taux_interet && p.taux_interet > 0 ? `
+          ${interetTotal > 0 ? `
           <div class='small text-info'>
-            <i class="fas fa-percentage"></i> Taux: ${p.taux_interet}% | 
-            Intérêt: ${Number((p.montant_accord||p.montant_demande||0) * (p.taux_interet||0) / 100).toLocaleString('fr-FR')} FCFA
+            <i class="fas fa-percentage"></i> Taux mensuel: ${p.taux_interet}% | 
+            Intérêt total: ${interetTotal.toLocaleString('fr-FR')} FCFA (${interetMensuel.toLocaleString('fr-FR')} FCFA / mois)
           </div>
           <div class='small text-success fw-bold'>
-            Total à rembourser: ${Number(p.total_a_rembourser||0).toLocaleString('fr-FR')} FCFA
+            Total à rembourser: ${totalARemb.toLocaleString('fr-FR')} FCFA
           </div>
           ` : `
-          <div class='small text-muted'>Total à rembourser: ${Number(p.montant_accord||p.montant_demande||0).toLocaleString('fr-FR')} FCFA</div>
+          <div class='small text-muted'>Total à rembourser: ${totalARemb.toLocaleString('fr-FR')} FCFA</div>
           `}
           <div class='small text-muted'>Reste: ${Number(p.montant_restant||0).toLocaleString('fr-FR')} FCFA</div>
           <div class='mt-2'>
@@ -3601,19 +3905,23 @@ async function checkMemberLoanStatus() {
 
 // Fonction pour mettre à jour l'aperçu du calcul d'intérêt
 function updateInterestPreview() {
-  const montantDemande = parseFloat(document.getElementById('pretForm').montant_demande.value || 0);
-  const tauxInteret = parseFloat(document.getElementById('pretForm').taux_interet.value || 0);
+  const form = document.getElementById('pretForm');
+  if (!form) return;
+  const montantDemande = parseFloat(form.montant_demande?.value || 0);
+  const tauxInteret = parseFloat(form.taux_interet?.value || 0);
+  const dureeMois = parseInt(form.duree_mois?.value || 0, 10);
   
-  if (montantDemande > 0 && tauxInteret > 0) {
-    const interet = montantDemande * tauxInteret / 100;
-    const total = montantDemande + interet;
+  if (montantDemande > 0 && tauxInteret > 0 && dureeMois > 0) {
+    const interetMensuel = montantDemande * tauxInteret / 100;
+    const interetTotal = interetMensuel * dureeMois;
+    const total = montantDemande + interetTotal;
     
     document.getElementById('previewMontantDemande').textContent = montantDemande.toLocaleString('fr-FR');
-    document.getElementById('previewInteret').textContent = interet.toLocaleString('fr-FR');
+    document.getElementById('previewInteretMensuel').textContent = interetMensuel.toLocaleString('fr-FR');
+    document.getElementById('previewInteretTotal').textContent = interetTotal.toLocaleString('fr-FR');
     document.getElementById('previewTotal').textContent = total.toLocaleString('fr-FR');
-    
-    // Mettre à jour le taux affiché dans l'aperçu
-    document.querySelector('#interestPreview .col-md-4:nth-child(2) strong').innerHTML = `Intérêt (${tauxInteret}%):`;
+    document.getElementById('previewTaux').textContent = tauxInteret.toLocaleString('fr-FR');
+    document.getElementById('previewDuree').textContent = dureeMois;
     
     document.getElementById('interestPreview').style.display = 'block';
   } else {
@@ -4792,6 +5100,8 @@ async function chargerRapport() {
     const dateDebut = document.getElementById('date-debut').value;
     const dateFin = document.getElementById('date-fin').value;
     const typeRapport = document.getElementById('type-rapport').value;
+    const rapportCaisseSelect = document.getElementById('rapport-caisse-select');
+    const selectedCaisseValue = rapportCaisseSelect ? (rapportCaisseSelect.value || '') : '';
     
     // Afficher un indicateur de chargement
     const contenuRapport = document.getElementById('contenu-rapport');
@@ -4809,6 +5119,9 @@ async function chargerRapport() {
     if (dateDebut) params.append('date_debut', dateDebut);
     if (dateFin) params.append('date_fin', dateFin);
     params.append('type', typeRapport);
+    if (selectedCaisseValue && selectedCaisseValue !== '_ALL_MY_') {
+      params.append('caisse_id', selectedCaisseValue);
+    }
     
     const response = await fetch(`/gestion-caisses/api/rapports-caisse/?${params}`, {
       headers: { 'X-CSRFToken': getCSRFToken() }
@@ -4864,7 +5177,10 @@ function afficherRapport(rapport, typeRapport) {
 
 // === Rapports Cotisations ===
 async function chargerRapportCotisations(){
-  const res = await fetch(`${API_BASE}/cotisations/?caisse=${USER_CAISE_ID}`);
+  const rapportCaisseSelect = document.getElementById('rapport-caisse-select');
+  const selectedCaisseId = rapportCaisseSelect ? (rapportCaisseSelect.value || USER_CAISE_ID || '') : (USER_CAISE_ID || '');
+  const caisseParam = selectedCaisseId ? `?caisse=${encodeURIComponent(selectedCaisseId)}` : '';
+  const res = await fetch(`${API_BASE}/cotisations/${caisseParam}`);
   const data = await res.json();
   const list = (data.results||data);
   const contenuRapport = document.getElementById('contenu-rapport');
@@ -4900,7 +5216,10 @@ async function chargerRapportCotisations(){
 }
 
 async function chargerRapportCotisationsParMembre(){
-  const res = await fetch(`${API_BASE}/cotisations/?caisse=${USER_CAISE_ID}`);
+  const rapportCaisseSelect = document.getElementById('rapport-caisse-select');
+  const selectedCaisseId = rapportCaisseSelect ? (rapportCaisseSelect.value || USER_CAISE_ID || '') : (USER_CAISE_ID || '');
+  const caisseParam = selectedCaisseId ? `?caisse=${encodeURIComponent(selectedCaisseId)}` : '';
+  const res = await fetch(`${API_BASE}/cotisations/${caisseParam}`);
   const data = await res.json();
   const list = (data.results||data);
   const agg = new Map();
@@ -4959,22 +5278,83 @@ async function genererPdfCotisationsMembre(){
   const params = new URLSearchParams();
   params.append('type', 'cotisations_membre');
   params.append('membre', membreId);
+  // Pour les agents ayant plusieurs caisses, on précise explicitement la caisse utilisée
+  if (typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+    params.append('caisse_id', USER_CAISE_ID);
+  }
   if (dateDebut) params.append('date_debut', dateDebut);
   if (dateFin) params.append('date_fin', dateFin);
   params.append('format', 'pdf');
   window.open(`/gestion-caisses/api/rapports-caisse/?${params.toString()}`, '_blank');
 }
 
+// Charger les cotisations du membre sélectionné et afficher le tableau dans l'onglet Rapports
+async function chargerRapportCotisationsMembreDepuisSelect(){
+  const membreSelect = document.getElementById('rapport-membre-select');
+  const membreId = membreSelect && membreSelect.value;
+  if (!membreId){
+    return; // pas de membre choisi, ne rien faire
+  }
+
+  const dateDebut = document.getElementById('date-debut')?.value || '';
+  const dateFin = document.getElementById('date-fin')?.value || '';
+  const params = new URLSearchParams();
+  params.append('type', 'cotisations_membre');
+  params.append('membre', membreId);
+  // Même logique que pour le PDF : préciser la caisse de l'agent si connue
+  if (typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+    params.append('caisse_id', USER_CAISE_ID);
+  }
+  if (dateDebut) params.append('date_debut', dateDebut);
+  if (dateFin) params.append('date_fin', dateFin);
+
+  const contenuRapport = document.getElementById('contenu-rapport');
+  if (contenuRapport){
+    contenuRapport.innerHTML = `
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Chargement...</span>
+        </div>
+        <p class="mt-3">Chargement des cotisations du membre...</p>
+      </div>
+    `;
+  }
+
+  try{
+    const resp = await fetch(`/gestion-caisses/api/rapports-caisse/?${params.toString()}`, {
+      headers: { 'X-CSRFToken': getCSRFToken() }
+    });
+    if (!resp.ok){
+      throw new Error('Erreur lors du chargement des cotisations du membre');
+    }
+    const rapport = await resp.json();
+    if (contenuRapport){
+      contenuRapport.innerHTML = afficherRapportCotisationsMembre(rapport);
+    }
+    // Repeupler la liste des membres et resélectionner le membre courant
+    await initRapportMembreSelect();
+    const sel = document.getElementById('rapport-membre-select');
+    if (sel){
+      sel.value = String(membreId);
+    }
+  } catch(e){
+    console.error(e);
+    showToast('Erreur lors du chargement des cotisations du membre', 'error');
+  }
+}
+
 function afficherRapportCotisationsMembre(rapport){
   const items = rapport.items || [];
-  const totaux = rapport.totaux || {};
+  // Sécuriser les totaux pour éviter les "NaN" à l'affichage lorsque le rapport est vide
+  const baseTotaux = { tempon: 0, solidarite: 0, penalite: 0, total: 0, nombre: 0 };
+  const totaux = Object.assign({}, baseTotaux, (rapport.totaux || {}));
   const membre = rapport.membre?.nom || '';
   return `
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="m-0">📋 Cotisations — ${membre}</h5>
         <div class="d-flex gap-2">
-          <select id="rapport-membre-select" class="form-select form-select-sm"></select>
+          <select id="rapport-membre-select" class="form-select form-select-sm" onchange="chargerRapportCotisationsMembreDepuisSelect()"></select>
           <button class="btn btn-sm btn-primary" onclick="genererPdfCotisationsMembre()"><i class="fas fa-file-pdf"></i> PDF Membre</button>
         </div>
       </div>
@@ -5729,6 +6109,8 @@ async function genererRapportPDF(typeRapport, btnEl) {
   try {
     const dateDebut = document.getElementById('date-debut').value;
     const dateFin = document.getElementById('date-fin').value;
+    const rapportCaisseSelect = document.getElementById('rapport-caisse-select');
+    const selectedCaisseValue = rapportCaisseSelect ? (rapportCaisseSelect.value || '') : '';
     
     // Afficher un indicateur de chargement
     button = btnEl || document.activeElement || null;
@@ -5741,6 +6123,9 @@ async function genererRapportPDF(typeRapport, btnEl) {
     if (dateFin) params.append('date_fin', dateFin);
     params.append('type', typeRapport);
     params.append('format', 'pdf');
+    if (selectedCaisseValue && selectedCaisseValue !== '_ALL_MY_') {
+      params.append('caisse_id', selectedCaisseValue);
+    }
     
     const response = await fetch(`/gestion-caisses/api/rapports-caisse/?${params}`, {
       headers: { 'X-CSRFToken': getCSRFToken() }
@@ -5872,6 +6257,18 @@ async function telechargerPretsParMotifPDF(btn){
           {% csrf_token %}
           <input type="hidden" name="id" />
           <div class="row g-3">
+            {% if user_role == 'Administrateur' %}
+            <!-- Sélection de la caisse (Admin uniquement) -->
+            <div class="col-12">
+              <h6 class="text-primary border-bottom pb-2 mb-3">🏦 Caisse</h6>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Caisse <span class="text-danger">*</span></label>
+              <select class="form-select" name="membreCaisse" id="membreCaisse" required>
+                <option value="">Sélectionner une caisse</option>
+              </select>
+            </div>
+            {% endif %}
             <!-- Informations d'identification -->
             <div class="col-12">
               <h6 class="text-primary border-bottom pb-2 mb-3">📋 Informations d'identification</h6>
@@ -5892,8 +6289,8 @@ async function telechargerPretsParMotifPDF(btn){
             </div>
             <div class="col-md-6">
               <label class="form-label">Numéro carte d'électeur (optionnel)</label>
-              <input class="form-control" name="numero_carte_electeur" maxlength="26" pattern="[A-Z0-9-]{26}" placeholder="Ex: A457-475G-5478U-45-01-01-25-12" />
-              <small class="form-text text-muted">26 caractères, lettres/chiffres/tirets, en majuscules</small>
+              <input class="form-control" name="numero_carte_electeur" maxlength="27" pattern="[A-Z0-9-]{27}" placeholder="Ex: A457-475G-5478U-45-01-01-25-12" />
+              <small class="form-text text-muted">27 caractères, lettres/chiffres/tirets, en majuscules</small>
             </div>
             
             <!-- Informations personnelles -->
@@ -6334,24 +6731,29 @@ async function telechargerPretsParMotifPDF(btn){
             </div>
             <div class="col-md-6">
               <label class="form-label">Durée (mois)</label>
-              <input class="form-control" name="duree_mois" type="number" required />
+              <input class="form-control" name="duree_mois" type="number" required oninput="updateInterestPreview()" />
             </div>
             <div class="col-md-6">
-              <label class="form-label">Taux d'intérêt (%)</label>
+              <label class="form-label mb-1">Taux d'intérêt (%)</label>
+              <small class="text-muted d-block mb-1">Taux appliqué chaque mois</small>
               <input class="form-control" name="taux_interet" type="number" step="0.01" value="0" oninput="updateInterestPreview()" />
             </div>
             <div class="col-12">
               <div class="alert alert-info" id="interestPreview" style="display: none;">
                 <div class="row">
-                  <div class="col-md-4">
+                  <div class="col-md-3">
                     <strong>Montant demandé:</strong><br>
                     <span id="previewMontantDemande">0</span> FCFA
                   </div>
-                  <div class="col-md-4">
-                    <strong>Intérêt (0%):</strong><br>
-                    <span id="previewInteret">0</span> FCFA
+                  <div class="col-md-3">
+                    <strong>Intérêt mensuel (<span id="previewTaux">0</span>%):</strong><br>
+                    <span id="previewInteretMensuel">0</span> FCFA
                   </div>
-                  <div class="col-md-4">
+                  <div class="col-md-3">
+                    <strong>Intérêt total (<span id="previewDuree">0</span> mois):</strong><br>
+                    <span id="previewInteretTotal">0</span> FCFA
+                  </div>
+                  <div class="col-md-3">
                     <strong>Total à rembourser:</strong><br>
                     <span id="previewTotal" class="text-success fw-bold">0</span> FCFA
                   </div>
@@ -6537,9 +6939,18 @@ if (typeof USER_CAISE_ID === 'undefined') { var USER_CAISE_ID = null; }
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Charger contexte utilisateur (récupère caisse_id)
-    const ctx = await fetch(`${API_BASE}/user-context/`).then(r=>r.json());
-    USER_CAISE_ID = ctx.caisse_id;
+    // Charger contexte utilisateur (récupère caisse_id et caisses pour les agents)
+    const ctx = await fetchUserContext();
+    if (ctx) {
+      USER_CAISE_ID = ctx.caisse_id;
+      
+      // Si c'est un agent, charger les caisses dans le sélecteur
+      const userRole = ctx.user?.role || '';
+      if (userRole === 'Agent' && ctx.caisses && ctx.caisses.length > 0) {
+        await loadAgentCaissesSelector(ctx.caisses, ctx.caisse_id);
+      }
+    }
+    
     // Précharger caisses pour l'onglet Partage si présent (admin)
     try { await populatePartageCaisses(); } catch(e) { console.warn(e); }
     // Précharger listes
@@ -7251,7 +7662,8 @@ function getStatutBadge(statut) {
     'EN_COURS': '<span class="badge bg-warning">En cours</span>',
     'APPROUVEE': '<span class="badge bg-success">Approuvée</span>',
     'REJETEE': '<span class="badge bg-danger">Rejetée</span>',
-    'TERMINEE': '<span class="badge bg-info">Terminée</span>'
+    'TERMINEE': '<span class="badge bg-info">Terminée</span>',
+    'ENREGISTREE': '<span class="badge bg-secondary">Enregistrée</span>'
   };
   return badges[statut] || '<span class="badge bg-secondary">Inconnu</span>';
 }
@@ -7545,16 +7957,36 @@ async function supprimerDepense(depenseId){
 // Charger le rapport des dépenses
 async function chargerRapportDepenses() {
   try {
-    const res = await fetch(`${API_BASE}/depenses/`);
+    const rapportCaisseSelect = document.getElementById('rapport-caisse-select');
+    const selectedCaisseId = rapportCaisseSelect ? (rapportCaisseSelect.value || USER_CAISE_ID || '') : (USER_CAISE_ID || '');
+    const caisseParam = selectedCaisseId ? `?caisse=${encodeURIComponent(selectedCaisseId)}` : '';
+    const res = await fetch(`${API_BASE}/depenses/${caisseParam}`);
     const data = await res.json();
-    const depenses = data.results || data;
-    
+    const depenses = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+    const totalMontant = depenses.reduce((a, d) => a + Number(d?.montantdepense || 0), 0);
+    const rows = depenses.length
+      ? depenses.map(depense => {
+          const statutCode = depense?.statut || 'ENREGISTREE';
+          return `
+            <tr>
+              <td>${formatDateSafe(depense?.datedepense)}</td>
+              <td>${depense?.caisse_nom || '—'}</td>
+              <td><span class="badge bg-info">${depense?.categorie_display || depense?.Objectifdepense || 'Non précisé'}</span></td>
+              <td class="fw-bold">${fmt(depense?.montantdepense || 0)} FCFA</td>
+              <td>${depense?.responsable_nom || 'Inconnu'}</td>
+              <td>${getStatutBadge(statutCode)}</td>
+              <td>${depense?.observation || depense?.description || ''}</td>
+            </tr>
+          `;
+        }).join('')
+      : `<tr><td colspan="7" class="text-center text-muted py-4">Aucune dépense trouvée pour cette période.</td></tr>`;
+
     const contenuRapport = document.getElementById('contenu-rapport');
     contenuRapport.innerHTML = `
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="m-0">💸 Rapport des Dépenses</h5>
-          <span class="text-muted">Total: ${fmt(depenses.reduce((a, d) => a + Number(d.montant || 0), 0))} FCFA</span>
+          <span class="text-muted">Total: ${fmt(totalMontant)} FCFA</span>
         </div>
         <div class="table-responsive">
           <table class="table table-striped">
@@ -7570,17 +8002,7 @@ async function chargerRapportDepenses() {
               </tr>
             </thead>
             <tbody>
-              ${depenses.map(depense => `
-                <tr>
-                  <td>${formatDateSafe(depense.date_depense)}</td>
-                  <td>${depense.caisse_nom}</td>
-                  <td><span class="badge bg-info">${depense.categorie_display}</span></td>
-                  <td class="fw-bold">${fmt(depense.montant)} FCFA</td>
-                  <td>${depense.responsable_nom}</td>
-                  <td>${getStatutBadge(depense.statut)}</td>
-                  <td>${depense.description}</td>
-                </tr>
-              `).join('')}
+              ${rows}
             </tbody>
           </table>
         </div>

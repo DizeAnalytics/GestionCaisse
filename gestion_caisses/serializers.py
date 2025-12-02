@@ -246,6 +246,8 @@ class PretSerializer(serializers.ModelSerializer):
     caisse = CaisseSerializer(read_only=True)
     membre_id = serializers.IntegerField(write_only=True)
     caisse_id = serializers.IntegerField(write_only=True)
+    interet_total = serializers.SerializerMethodField()
+    interet_mensuel = serializers.SerializerMethodField()
     
     # Champs calculés
     montant_restant = serializers.ReadOnlyField()
@@ -318,6 +320,18 @@ class PretSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({'membre': 'Membre introuvable.'})
         
         return data
+
+    def get_interet_total(self, obj):
+        try:
+            return obj.montant_interet_calcule
+        except Exception:
+            return 0
+
+    def get_interet_mensuel(self, obj):
+        try:
+            return obj.montant_interet_mensuel
+        except Exception:
+            return 0
 
 
 class MouvementFondSerializer(serializers.ModelSerializer):
@@ -692,14 +706,28 @@ class PretListSerializer(serializers.ModelSerializer):
     montant_restant = serializers.ReadOnlyField()
     total_a_rembourser = serializers.ReadOnlyField()
     taux_interet = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    interet_total = serializers.SerializerMethodField()
+    interet_mensuel = serializers.SerializerMethodField()
     
     class Meta:
         model = Pret
         fields = [
             'id', 'numero_pret', 'membre_nom', 'caisse_nom', 'caisse_code', 'montant_demande',
             'montant_accord', 'statut', 'date_demande', 'montant_restant',
-            'total_a_rembourser', 'taux_interet'
+            'total_a_rembourser', 'taux_interet', 'interet_total', 'interet_mensuel'
         ]
+
+    def get_interet_total(self, obj):
+        try:
+            return obj.montant_interet_calcule
+        except Exception:
+            return 0
+
+    def get_interet_mensuel(self, obj):
+        try:
+            return obj.montant_interet_mensuel
+        except Exception:
+            return 0
 
 
 # Sérialiseurs pour les statistiques et tableaux de bord
@@ -736,11 +764,31 @@ class DashboardStatsSerializer(serializers.Serializer):
 class DepenseSerializer(serializers.ModelSerializer):
     """Sérialiseur pour les dépenses (modèle simplifié)"""
     caisse_nom = serializers.CharField(source='caisse.nom_association', read_only=True)
+    responsable_nom = serializers.SerializerMethodField()
+    categorie_display = serializers.SerializerMethodField()
+    statut = serializers.SerializerMethodField()
+    statut_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Depense
         fields = '__all__'
         read_only_fields = ['date_creation', 'date_modification', 'utilisateur']
+
+    def get_responsable_nom(self, obj):
+        user = getattr(obj, 'utilisateur', None)
+        if not user:
+            return 'Inconnu'
+        return (user.get_full_name() or user.get_username() or 'Inconnu').strip()
+
+    def get_categorie_display(self, obj):
+        return obj.Objectifdepense or 'Sans objectif'
+
+    def get_statut(self, obj):
+        # Le modèle simplifié ne gère pas encore plusieurs statuts
+        return 'ENREGISTREE'
+
+    def get_statut_display(self, obj):
+        return 'Enregistrée'
 
 
 class DepenseListSerializer(serializers.ModelSerializer):
