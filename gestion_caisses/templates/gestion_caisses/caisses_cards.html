@@ -152,9 +152,15 @@
                                     au {{ data.exercice_actuel.date_fin|date:"d/m/Y"|default_if_none:"-" }}
                                 </div>
                             </div>
+                            {% if data.exercice_actuel.est_actif %}
                             <span class="badge bg-success">
                                 <i class="fa fa-play me-1"></i>En cours
                             </span>
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="fa fa-check-circle me-1"></i>Clôturé
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                     {% else %}

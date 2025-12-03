@@ -33,7 +33,8 @@ from .serializers import (
     UserSerializer, CaisseGeneraleSerializer, CaisseGeneraleMouvementSerializer,
     TransfertCaisseSerializer, SeanceReunionSerializer, CotisationSerializer,
     DepenseSerializer, DepenseListSerializer, ExerciceCaisseSerializer,
-    SalaireAgentSerializer, FichePaieSerializer, AgentListSerializer
+    SalaireAgentSerializer, FichePaieSerializer, AgentListSerializer,
+    serialize_exercice_info,
 )
 from .services import PretService, NotificationService
 from .utils import (
@@ -2522,17 +2523,18 @@ def caisses_cards_view(request):
         'presidente', 'secretaire', 'tresoriere'
     ).order_by('-date_creation')
     
-    # Préparer les données pour chaque caisse
-    caisses_data = []
-    for caisse in caisses:
-        # Récupérer l'exercice en cours (source unique de vérité: module Exercice de caisse)
-        exercice_actuel = (
-            ExerciceCaisse.objects
-            .filter(caisse=caisse, statut='EN_COURS')
-            .order_by('-date_debut')
-            .first()
-        )
-        
+        # Préparer les données pour chaque caisse
+        caisses_data = []
+        for caisse in caisses:
+            # Récupérer l'exercice en cours (source unique de vérité: module Exercice de caisse)
+            exercice_en_cours = (
+                ExerciceCaisse.objects
+                .filter(caisse=caisse, statut='EN_COURS')
+                .order_by('-date_debut')
+                .first()
+            )
+            exercice_actuel = serialize_exercice_info(exercice_en_cours)
+
         # Récupérer les 3 premiers responsables
         responsables = []
         if caisse.presidente:
