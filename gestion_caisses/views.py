@@ -240,6 +240,13 @@ class CotisationViewSet(viewsets.ModelViewSet):
         Création de cotisation : interdite si la caisse n'a pas d'exercice EN_COURS.
         """
         caisse = serializer.validated_data.get('caisse')
+        caisse_id = serializer.validated_data.get('caisse_id')
+        if not caisse and caisse_id:
+            try:
+                caisse = Caisse.objects.get(pk=caisse_id)
+                serializer.validated_data['caisse'] = caisse
+            except Caisse.DoesNotExist:
+                raise ValidationError({'caisse_id': "Caisse introuvable."})
         if not caisse:
             raise ValidationError({'caisse': "La caisse est obligatoire pour enregistrer une cotisation."})
 
@@ -1223,6 +1230,13 @@ class PretViewSet(viewsets.ModelViewSet):
         try:
             # Déterminer la caisse cible avant de sauvegarder
             caisse = serializer.validated_data.get('caisse')
+            caisse_id = serializer.validated_data.get('caisse_id')
+            if not caisse and caisse_id:
+                try:
+                    caisse = Caisse.objects.get(pk=caisse_id)
+                    serializer.validated_data['caisse'] = caisse
+                except Caisse.DoesNotExist:
+                    raise ValidationError({'caisse_id': "Caisse introuvable."})
 
             # Pour les non-admins, vérifier que la caisse appartient à l'utilisateur
             if not self.request.user.is_superuser:
@@ -5069,6 +5083,13 @@ class DepenseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Récupérer la caisse et le montant avant de sauvegarder
         caisse = serializer.validated_data.get('caisse')
+        caisse_id = serializer.validated_data.get('caisse_id')
+        if not caisse and caisse_id:
+            try:
+                caisse = Caisse.objects.get(pk=caisse_id)
+                serializer.validated_data['caisse'] = caisse
+            except Caisse.DoesNotExist:
+                raise ValidationError({'caisse_id': "Caisse introuvable."})
         montant = serializer.validated_data.get('montantdepense', 0)
 
         if not caisse:
