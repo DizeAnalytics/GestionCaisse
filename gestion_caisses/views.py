@@ -869,7 +869,15 @@ class CaisseViewSet(viewsets.ModelViewSet):
         except Exception:
             raise ValidationError({'date_debut': 'Format invalide. Utilisez YYYY-MM-DD.'})
 
-        # Empêcher deux exercices en cours
+        # Avant toute chose, clôturer automatiquement les exercices échus
+        today = timezone.now().date()
+        ExerciceCaisse.objects.filter(
+            caisse=caisse,
+            statut='EN_COURS',
+            date_fin__lt=today
+        ).update(statut='CLOTURE')
+
+        # Empêcher deux exercices en cours (après mise à jour automatique ci-dessus)
         if ExerciceCaisse.objects.filter(caisse=caisse, statut='EN_COURS').exists():
             raise ValidationError({'detail': 'Un exercice est déjà en cours pour cette caisse.'})
 

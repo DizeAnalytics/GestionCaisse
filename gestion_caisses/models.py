@@ -631,9 +631,23 @@ class ExerciceCaisse(models.Model):
             self.date_fin = add_months_to_date(self.date_debut, 12)
 
     def save(self, *args, **kwargs):
+        """
+        Assure la cohérence de l'exercice :
+        - calcule automatiquement la date_fin si manquante (12 mois)
+        - bascule automatiquement le statut à CLOTURE si la date de fin est dépassée
+        """
         # Assurer la date_fin
         if not self.date_fin and self.date_debut:
             self.date_fin = add_months_to_date(self.date_debut, 12)
+
+        # Clôture automatique si la date de fin est dépassée
+        if (
+            self.statut == 'EN_COURS'
+            and self.date_fin is not None
+            and timezone.now().date() > self.date_fin
+        ):
+            self.statut = 'CLOTURE'
+
         super().save(*args, **kwargs)
 
 

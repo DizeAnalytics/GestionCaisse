@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from datetime import timedelta
+from django.utils import timezone
 from .models import (
     Region, Prefecture, Commune, Canton, Village, Quartier,
     Caisse, Membre, Pret, Echeance, MouvementFond, 
@@ -15,14 +16,25 @@ def serialize_exercice_info(exercice):
     if not exercice:
         return None
 
-    est_actif = getattr(exercice, 'est_actif', True)
+    today = timezone.now().date()
+
+    # Recalcule est_actif à partir de la date et du statut pour être sûr
     statut = exercice.statut
+    date_fin_modele = exercice.date_fin
+    if date_fin_modele is None and exercice.date_debut:
+        # Durée standard: 12 mois, cohérent avec le modèle
+        date_fin_modele = exercice.date_debut + timedelta(days=365)
+
+    est_actif = (
+        statut == 'EN_COURS'
+        and exercice.date_debut is not None
+        and (date_fin_modele is None or today <= date_fin_modele)
+    )
+
     if statut == 'EN_COURS' and not est_actif:
         statut = 'CLOTURE'
 
-    date_fin = exercice.date_fin
-    if not date_fin and exercice.date_debut:
-        date_fin = exercice.date_debut + timedelta(days=365)
+    date_fin = date_fin_modele
 
     return {
         'id': exercice.id,
