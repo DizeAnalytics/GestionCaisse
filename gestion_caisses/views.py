@@ -2522,18 +2522,18 @@ def caisses_cards_view(request):
         'agent', 'village', 'canton', 'commune', 'prefecture', 'region',
         'presidente', 'secretaire', 'tresoriere'
     ).order_by('-date_creation')
-    
-        # Préparer les données pour chaque caisse
-        caisses_data = []
-        for caisse in caisses:
-            # Récupérer l'exercice en cours (source unique de vérité: module Exercice de caisse)
-            exercice_en_cours = (
-                ExerciceCaisse.objects
-                .filter(caisse=caisse, statut='EN_COURS')
-                .order_by('-date_debut')
-                .first()
-            )
-            exercice_actuel = serialize_exercice_info(exercice_en_cours)
+
+    # Préparer les données pour chaque caisse
+    caisses_data = []
+    for caisse in caisses:
+        # Récupérer l'exercice en cours (source unique de vérité: module Exercice de caisse)
+        exercice_en_cours = (
+            ExerciceCaisse.objects
+            .filter(caisse=caisse, statut='EN_COURS')
+            .order_by('-date_debut')
+            .first()
+        )
+        exercice_actuel = serialize_exercice_info(exercice_en_cours)
 
         # Récupérer les 3 premiers responsables
         responsables = []
@@ -2555,7 +2555,7 @@ def caisses_cards_view(request):
                 'role': 'Trésorière',
                 'telephone': caisse.tresoriere.numero_telephone
             })
-        
+
         caisses_data.append({
             'caisse': caisse,
             'exercice_actuel': exercice_actuel,
@@ -2563,12 +2563,12 @@ def caisses_cards_view(request):
             'localisation': f"{caisse.village.nom}, {caisse.canton.nom}, {caisse.commune.nom}",
             'agent_responsable': caisse.agent.nom_complet if caisse.agent else 'Non assigné'
         })
-    
+
     context = {
         'caisses_data': caisses_data,
         'total_caisses': len(caisses_data)
     }
-    
+
     return render(request, 'gestion_caisses/caisses_cards.html', context)
 
 @login_required
