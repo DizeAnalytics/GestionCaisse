@@ -64,6 +64,21 @@ import json
 from datetime import datetime, timedelta
 
 
+def auto_close_expired_exercices():
+    """
+    Met à jour en base tous les exercices dont la date de fin est dépassée.
+
+    Utilisé avant certains affichages (cartes de caisses, etc.) afin qu'un
+    exercice expiré (par ex. 11/10/2024 au 11/10/2025) apparaisse bien
+    comme « Clôturé » et non « En cours ».
+    """
+    today = timezone.now().date()
+    ExerciceCaisse.objects.filter(
+        statut="EN_COURS",
+        date_fin__lt=today,
+    ).update(statut="CLOTURE")
+
+
 def ensure_caisse_has_active_exercice(caisse):
     """
     Vérifie qu'une caisse possède un exercice EN_COURS et actif.
@@ -2524,7 +2539,10 @@ def agent_stats_api(request):
 def caisses_cards_view(request):
     """Vue pour afficher toutes les caisses dans des cartes avec détails"""
     from django.db.models import Prefetch
-    
+
+    # S'assurer que les exercices expirés sont bien marqués comme clôturés
+    auto_close_expired_exercices()
+
     # Récupérer toutes les caisses avec leurs responsables et localisation
     caisses = Caisse.objects.select_related(
         'agent', 'village', 'canton', 'commune', 'prefecture', 'region',
