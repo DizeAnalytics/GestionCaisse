@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from datetime import timedelta
 from .models import (
     Region, Prefecture, Commune, Canton, Village, Quartier,
     Caisse, Membre, Pret, Echeance, MouvementFond, 
@@ -7,6 +8,29 @@ from .models import (
     SeanceReunion, Cotisation, Depense, SalaireAgent, FichePaie, Agent,
     ExerciceCaisse
 )
+
+
+def serialize_exercice_info(exercice):
+    """Retourne une représentation normalisée d'un exercice."""
+    if not exercice:
+        return None
+
+    est_actif = getattr(exercice, 'est_actif', True)
+    statut = exercice.statut
+    if statut == 'EN_COURS' and not est_actif:
+        statut = 'CLOTURE'
+
+    date_fin = exercice.date_fin
+    if not date_fin and exercice.date_debut:
+        date_fin = exercice.date_debut + timedelta(days=365)
+
+    return {
+        'id': exercice.id,
+        'date_debut': exercice.date_debut,
+        'date_fin': date_fin,
+        'statut': statut,
+        'est_actif': est_actif,
+    }
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -194,18 +218,13 @@ class CaisseSerializer(serializers.ModelSerializer):
     def get_exercice_actuel(self, obj):
         """Récupère l'exercice en cours ou le dernier exercice clôturé"""
         # Priorité: exercice EN_COURS, sinon le dernier exercice (le plus récent)
-        exercice = obj.exercices.filter(statut='EN_COURS').first()
-        if not exercice:
-            # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
-            exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
+        exercice = obj.exercices.filter(statut='EN_COURS').order_by('-date_debut').first()
         if exercice:
-            return {
-                'id': exercice.id,
-                'date_debut': exercice.date_debut,
-                'date_fin': exercice.date_fin,
-                'statut': exercice.statut
-            }
-        return None
+            return serialize_exercice_info(exercice)
+
+        # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
+        exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
+        return serialize_exercice_info(exercice)
     
     class Meta:
         model = Caisse
@@ -658,18 +677,13 @@ class CaisseListSerializer(serializers.ModelSerializer):
     def get_exercice_actuel(self, obj):
         """Récupère l'exercice en cours ou le dernier exercice clôturé"""
         # Priorité: exercice EN_COURS, sinon le dernier exercice (le plus récent)
-        exercice = obj.exercices.filter(statut='EN_COURS').first()
-        if not exercice:
-            # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
-            exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
+        exercice = obj.exercices.filter(statut='EN_COURS').order_by('-date_debut').first()
         if exercice:
-            return {
-                'id': exercice.id,
-                'date_debut': exercice.date_debut,
-                'date_fin': exercice.date_fin,
-                'statut': exercice.statut
-            }
-        return None
+            return serialize_exercice_info(exercice)
+
+        # Si aucun exercice en cours, prendre le dernier exercice (même clôturé)
+        exercice = obj.exercices.order_by('-date_debut', '-date_creation').first()
+        return serialize_exercice_info(exercice)
     
     class Meta:
         model = Caisse
