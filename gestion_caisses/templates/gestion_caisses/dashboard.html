@@ -240,6 +240,20 @@
   }
 }
 
+/* Rapport cotisations membre - meilleure responsivité sur mobile */
+.rapport-membre-card {
+  margin-top: 0.5rem;
+}
+.rapport-membre-header h5 {
+  font-size: 1rem;
+}
+@media (max-width: 576px) {
+  .rapport-membre-actions .form-select-sm,
+  .rapport-membre-actions .btn {
+    width: 100%;
+  }
+}
+
 /* Responsive pour tablettes */
 @media (min-width: 768px) and (max-width: 991.98px) {
   .modal-dialog {
@@ -889,6 +903,12 @@
     <div class="app-title">
       <h1>{{ nom_application|default:"CashFlow Pro FKM" }}</h1>
       <p>{{ description_application|default:"Gestion des Caisses FKM" }}</p>
+      {% if user_role == 'Agent' %}
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.95;">
+        Caisse active :
+        <span id="app-active-caisse">{{ caisse_nom|default:"Aucune caisse" }}</span>
+      </p>
+      {% endif %}
     </div>
   </div>
   
@@ -899,7 +919,12 @@
       <div class="user-role" id="user-role">{{ user_role }}</div>
       {% if user_role == 'Agent' %}
       <div class="agent-caisse-selector" style="margin-top: 15px; margin-bottom: 10px;">
-        <label style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #ccc;">Caisse active :</label>
+        <label style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #ccc;">
+          Caisse active :
+          <span id="agent-active-caisse-label-desktop" style="font-weight: 600; color: #fff;">
+            {{ caisse_nom|default:"Sélectionner une caisse" }}
+          </span>
+        </label>
         <select id="agent-caisse-select" class="form-select form-select-sm agent-caisse-select" style="width: 100%; font-size: 0.9em;">
           <option value="">Chargement...</option>
         </select>
@@ -978,6 +1003,8 @@
         <h3>🚨 Alertes</h3>
         <div id="alertes-list" class="alertes-grid"></div>
         </div>
+      <!-- Carte de la caisse active (contenu chargé dynamiquement en JS via loadCaisse) -->
+      <div id="caisse-card" class="mt-3"></div>
     </div>
     <div id="frais_fondation" class="content-section">
       <h2>🏛️ Frais de Fondation</h2>
@@ -1413,24 +1440,30 @@
     
     <div id="rapports" class="content-section">
       <style>
-        .rapports-header{gap:1rem;flex-wrap:wrap}
+        .rapports-header{gap:1rem;flex-wrap:wrap;background:#ffffff;border-radius:12px;padding:0.75rem 1rem;}
         .rapports-header h2{flex:1 1 220px}
-        .report-toolbar{gap:.5rem;flex:1 1 320px;justify-content:flex-end}
+        /* Toolbar de boutons : par défaut, on autorise le retour à la ligne
+           pour éviter que les boutons de droite soient coupés. */
+        .report-toolbar{gap:.5rem;flex:1 1 320px;justify-content:flex-end;flex-wrap:wrap}
         .report-btn{border-radius:999px;padding:.35rem .6rem;box-shadow:0 2px 8px rgba(0,0,0,.06);display:inline-flex;align-items:center;gap:.35rem;font-weight:600;font-size:.85rem;transition:transform .08s ease,box-shadow .2s ease}
         .report-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.09)}
         .report-sep{width:1px;background:rgba(0,0,0,.06);margin:0 .25rem}
         @media (max-width: 992px){
+          /* Sur écrans moyens, on aligne à gauche et on garde le wrap */
           .report-toolbar{justify-content:flex-start}
         }
         @media (max-width: 768px){
-          .report-toolbar{width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:.35rem}
-          .report-toolbar::-webkit-scrollbar{height:6px}
-          .report-btn{flex:0 0 auto}
+          /* Sur tablettes/mobiles, la toolbar prend toute la largeur,
+             et le bloc garde un fond blanc pleine largeur. */
+          .rapports-header{width:100%;box-sizing:border-box}
+          .report-toolbar{width:100%;justify-content:flex-start}
           .report-btn span{white-space:nowrap}
           .report-sep{display:none!important}
         }
         @media (max-width: 576px){
-          .report-toolbar{overflow-x:visible;flex-wrap:wrap}
+          /* Sur très petits écrans, on force 2 boutons par ligne,
+             puis 1 par ligne sous 420px pour que tout reste visible. */
+          .report-toolbar{flex-wrap:wrap}
           .report-btn{width:calc(50% - .35rem);justify-content:center}
           .rapports-header h2{flex-basis:100%}
           #rapports .card .btn{width:100%}
@@ -2519,6 +2552,22 @@ function updateMobileActiveCaisseLabel() {
   labelEl.textContent = text || 'Aucune caisse';
 }
 
+// Met à jour le libellé de la caisse active (version desktop, au-dessus de la liste)
+function updateDesktopActiveCaisseLabel() {
+  const desktopSelect = document.getElementById('agent-caisse-select');
+  const labelEl = document.getElementById('agent-active-caisse-label-desktop');
+  const headerEl = document.getElementById('app-active-caisse');
+  if (!desktopSelect || !labelEl) return;
+
+  const selectedOption = desktopSelect.options[desktopSelect.selectedIndex];
+  const text = selectedOption && selectedOption.text ? selectedOption.text.trim() : '';
+  const value = text || 'Aucune caisse';
+  labelEl.textContent = value;
+  if (headerEl) {
+    headerEl.textContent = value;
+  }
+}
+
 // Charger le sélecteur de caisses pour les agents (desktop + mobile)
 async function loadAgentCaissesSelector(caisses, selectedCaisseId = null) {
   const desktopSelect = document.getElementById('agent-caisse-select');
@@ -2548,6 +2597,8 @@ async function loadAgentCaissesSelector(caisses, selectedCaisseId = null) {
   if (desktopSelect) {
     desktopSelect.innerHTML = optionsHtml;
     desktopSelect.value = String(effectiveSelectedId || '');
+    // Mettre à jour le libellé desktop avec la caisse actuellement sélectionnée
+    updateDesktopActiveCaisseLabel();
   }
   if (mobileSelect) {
     mobileSelect.innerHTML = optionsHtml;
@@ -2581,6 +2632,9 @@ async function loadAgentCaissesSelector(caisses, selectedCaisseId = null) {
     if (rapportSelect && rapportSelect.value !== String(idNum)) {
       rapportSelect.value = String(idNum);
     }
+    // Mettre à jour les libellés de caisse active (desktop + mobile)
+    updateDesktopActiveCaisseLabel();
+    updateMobileActiveCaisseLabel();
     // Recharger toutes les données avec la nouvelle caisse
     await reloadDataForSelectedCaisse();
     showToast('Caisse changée avec succès', 'success');
@@ -2685,6 +2739,11 @@ async function loadCaisse(){
     const montantCaisse = Number(caisse.fond_disponible || 0).toLocaleString('fr-FR');
     if (dashboardTitle) {
       dashboardTitle.textContent = `📊 Tableau de Bord — ${caisse.nom_association || ''} (${montantCaisse} FCFA)`;
+    }
+    // Mettre à jour aussi la caisse active dans le header principal
+    const headerActiveEl = document.getElementById('app-active-caisse');
+    if (headerActiveEl) {
+      headerActiveEl.textContent = caisse.nom_association || 'Aucune caisse';
     }
 
     // Mettre à jour la carte principale de la caisse
@@ -5350,10 +5409,10 @@ function afficherRapportCotisationsMembre(rapport){
   const totaux = Object.assign({}, baseTotaux, (rapport.totaux || {}));
   const membre = rapport.membre?.nom || '';
   return `
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="m-0">📋 Cotisations — ${membre}</h5>
-        <div class="d-flex gap-2">
+    <div class="card rapport-membre-card">
+      <div class="card-header rapport-membre-header d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2">
+        <h5 class="m-0 text-center text-md-start w-100 w-md-auto">📋 Cotisations — ${membre}</h5>
+        <div class="rapport-membre-actions d-flex flex-column flex-sm-row justify-content-center justify-content-md-end w-100 gap-2">
           <select id="rapport-membre-select" class="form-select form-select-sm" onchange="chargerRapportCotisationsMembreDepuisSelect()"></select>
           <button class="btn btn-sm btn-primary" onclick="genererPdfCotisationsMembre()"><i class="fas fa-file-pdf"></i> PDF Membre</button>
         </div>
@@ -8231,14 +8290,20 @@ function renderCaisses(caissesToRender = allCaisses) {
     
     grid.innerHTML = caissesToRender.map(caisse => createCaisseCard(caisse)).join('');
 
-    // Désactiver les activités côté non-admin si aucun exercice
+    // Désactiver les activités côté non-admin si aucun exercice EN_COURS pour la caisse sélectionnée
     try {
         const roleText = document.getElementById('user-role')?.textContent?.trim();
         if (roleText && roleText !== 'Administrateur') {
-            // Heuristique: prendre la première caisse (ou améliorable si API renvoie la caisse de l'utilisateur)
-            const userCaisse = caissesToRender[0];
-            const hasExercice = !!(userCaisse && userCaisse.exercice_actuel);
-            const ids = ['tab-prets','tab-depenses'];
+            // Trouver la caisse correspondant à la caisse active (USER_CAISE_ID)
+            let userCaisse = null;
+            if (typeof USER_CAISE_ID !== 'undefined' && USER_CAISE_ID) {
+                userCaisse = caissesToRender.find(c => String(c.id) === String(USER_CAISE_ID)) || null;
+            }
+            if (!userCaisse) {
+                userCaisse = caissesToRender[0] || null;
+            }
+            const hasExercice = !!(userCaisse && userCaisse.exercice_actuel && userCaisse.exercice_actuel.statut === 'EN_COURS');
+            const ids = ['tab-prets','tab-depenses','tab-rapports'];
             ids.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {

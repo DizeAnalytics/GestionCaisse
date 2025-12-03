@@ -61,6 +61,33 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 import json
 from datetime import datetime, timedelta
+
+
+def ensure_caisse_has_active_exercice(caisse):
+    """
+    Vérifie qu'une caisse possède un exercice EN_COURS et actif.
+    Lève une ValidationError sinon.
+    """
+    if not caisse:
+        raise ValidationError({'caisse': "La caisse est obligatoire pour cette opération."})
+
+    # Chercher un exercice EN_COURS pour cette caisse
+    exercice = (
+        ExerciceCaisse.objects
+        .filter(caisse=caisse, statut='EN_COURS')
+        .order_by('-date_debut')
+        .first()
+    )
+
+    if not exercice or not exercice.est_actif:
+        raise ValidationError({
+            'detail': (
+                "Aucun exercice en cours pour cette caisse. "
+                "Veuillez ouvrir un exercice avant d'enregistrer des opérations."
+            )
+        })
+
+    return exercice
 # ============================================================================
 # Bloc utilitaire: synthèse "Caisse Générale" pour les rapports
 # ============================================================================
@@ -209,19 +236,17 @@ class CotisationViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # Autoriser la création de cotisations même sans exercice actif
+        """
+        Création de cotisation : interdite si la caisse n'a pas d'exercice EN_COURS.
+        """
+        caisse = serializer.validated_data.get('caisse')
+        if not caisse:
+            raise ValidationError({'caisse': "La caisse est obligatoire pour enregistrer une cotisation."})
 
-        instance = serializer.save(utilisateur=self.request.user)
-        # Vérifier le solde disponible avant validation finale
-        try:
-            caisse = instance.caisse
-            solde = caisse.solde_disponible_depenses
-            if (solde is not None) and (instance.montantdepense is not None) and (instance.montantdepense > solde):
-                # Annuler création
-                instance.delete()
-                raise ValidationError({'montantdepense': "Solde disponible insuffisant pour enregistrer cette dépense"})
-        except Exception:
-            pass
+        # Vérifier l'existence d'un exercice en cours pour cette caisse
+        ensure_caisse_has_active_exercice(caisse)
+
+        serializer.save(utilisateur=self.request.user)
 
 
 # API: Statistiques des cotisations
@@ -1196,29 +1221,33 @@ class PretViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         try:
-            # Valider le modèle avant la sauvegarde
-            pret = serializer.save()
-            pret.full_clean()
-            
+            # Déterminer la caisse cible avant de sauvegarder
+            caisse = serializer.validated_data.get('caisse')
+
             # Pour les non-admins, vérifier que la caisse appartient à l'utilisateur
             if not self.request.user.is_superuser:
-                caisse = serializer.validated_data.get('caisse') or pret.caisse
                 user_caisses = get_user_caisses(self.request.user)
-                
+
                 # Si c'est un membre (une seule caisse), utiliser automatiquement sa caisse
                 if not AgentPermissions.is_agent(self.request.user):
                     caisse = get_user_caisse(self.request.user)
                     if not caisse:
                         raise ValidationError({'detail': 'Aucune caisse associée à votre compte.'})
-                
+
                 # Vérifier que la caisse sélectionnée appartient à l'utilisateur
                 if caisse and caisse not in user_caisses:
                     raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
-                
-                if caisse:
-                    pret.caisse = caisse
-                    pret.save()
-            
+
+            if not caisse:
+                raise ValidationError({'caisse': "La caisse est obligatoire pour enregistrer un prêt."})
+
+            # Vérifier l'existence d'un exercice en cours pour cette caisse
+            ensure_caisse_has_active_exercice(caisse)
+
+            # Valider le modèle avant la sauvegarde
+            pret = serializer.save(caisse=caisse)
+            pret.full_clean()
+
             # Ne pas calculer automatiquement le montant_accord ici
             # L'admin le définira lors de la validation
             
@@ -5041,21 +5070,26 @@ class DepenseViewSet(viewsets.ModelViewSet):
         # Récupérer la caisse et le montant avant de sauvegarder
         caisse = serializer.validated_data.get('caisse')
         montant = serializer.validated_data.get('montantdepense', 0)
-        
+
+        if not caisse:
+            raise ValidationError({'caisse': "La caisse est obligatoire pour enregistrer une dépense."})
+
+        # Vérifier qu'il existe un exercice en cours pour cette caisse
+        ensure_caisse_has_active_exercice(caisse)
+
         # Vérifier que le fond_disponible est suffisant
-        if caisse and montant > 0:
+        if montant and montant > 0:
             fond_disponible = caisse.fond_disponible or 0
             if montant > fond_disponible:
-                from rest_framework.exceptions import ValidationError
                 raise ValidationError({
                     'montantdepense': f'Le montant de la dépense ({montant} FCFA) dépasse le fond disponible de la caisse ({fond_disponible} FCFA).'
                 })
-        
+
         # Sauvegarder la dépense
         depense = serializer.save(utilisateur=self.request.user)
-        
+
         # Diminuer le fond_disponible de la caisse
-        if caisse and montant > 0:
+        if montant and montant > 0:
             caisse.fond_disponible = (caisse.fond_disponible or 0) - montant
             caisse.save(update_fields=['fond_disponible'])
 
@@ -5064,6 +5098,9 @@ class DepenseViewSet(viewsets.ModelViewSet):
         """Approuver une dépense"""
         depense = self.get_object()
         notes = request.data.get('notes', '')
+
+        # Vérifier qu'il existe toujours un exercice en cours pour la caisse
+        ensure_caisse_has_active_exercice(depense.caisse)
         
         if depense.statut != 'EN_COURS':
             return Response(
@@ -5094,6 +5131,9 @@ class DepenseViewSet(viewsets.ModelViewSet):
         """Rejeter une dépense"""
         depense = self.get_object()
         notes = request.data.get('notes', '')
+
+        # Vérifier qu'il existe toujours un exercice en cours pour la caisse
+        ensure_caisse_has_active_exercice(depense.caisse)
         
         if depense.statut != 'EN_COURS':
             return Response(
