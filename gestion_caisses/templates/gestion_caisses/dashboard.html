@@ -8355,6 +8355,7 @@ function formatDateOnly(input){
 function createCaisseCard(caisse) {
     const dateCreation = formatDateOnly(caisse.date_creation) || '-';
     const solde = new Intl.NumberFormat('fr-FR').format(caisse.fond_disponible || 0);
+    const cycleCount = (caisse.exercice_count !== undefined && caisse.exercice_count !== null) ? caisse.exercice_count : 0;
     
     // Localisation - utiliser le champ localisation du sérialiseur
     const localisation = caisse.localisation || 'Non définie';
@@ -8481,6 +8482,9 @@ function createCaisseCard(caisse) {
                             <h5 class="card-title mb-1 fw-bold" style="font-size: 1.1rem;">${caisse.nom_association || 'N/A'}</h5>
                             <small class="opacity-75" style="font-size: 0.8rem;">
                                 <i class="fa fa-tag me-1"></i>Code: ${caisse.code || 'N/A'}
+                            </small>
+                            <small class="d-block mt-1" style="font-size: 0.8rem; color: rgba(255,255,255,0.75);">
+                                <i class="fa fa-sync-alt me-1"></i>Cycle : ${cycleCount}
                             </small>
                         </div>
                         ${statutBadge}

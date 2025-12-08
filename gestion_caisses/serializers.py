@@ -195,6 +195,7 @@ class CaisseSerializer(serializers.ModelSerializer):
     presidente_telephone = serializers.CharField(source='presidente.numero_telephone', read_only=True)
     secretaire_telephone = serializers.CharField(source='secretaire.numero_telephone', read_only=True)
     tresoriere_telephone = serializers.CharField(source='tresoriere.numero_telephone', read_only=True)
+    exercice_count = serializers.IntegerField(read_only=True)
     
     # Agent responsable
     agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
@@ -657,6 +658,7 @@ class CaisseListSerializer(serializers.ModelSerializer):
     canton_nom = serializers.CharField(source='canton.nom', read_only=True)
     nombre_membres = serializers.ReadOnlyField()
     solde_disponible = serializers.ReadOnlyField()
+    exercice_count = serializers.IntegerField(read_only=True)
     
     # Agent responsable
     agent_nom = serializers.CharField(source='agent.nom_complet', read_only=True)
@@ -705,7 +707,7 @@ class CaisseListSerializer(serializers.ModelSerializer):
             'fond_disponible', 'solde_disponible', 'date_creation', 'agent_nom',
             'presidente_nom', 'secretaire_nom', 'tresoriere_nom',
             'presidente_telephone', 'secretaire_telephone', 'tresoriere_telephone',
-            'localisation', 'exercice_actuel'
+            'localisation', 'exercice_actuel', 'exercice_count'
         ]
 
 

@@ -809,7 +809,7 @@ class CaisseViewSet(viewsets.ModelViewSet):
         return CaisseSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().annotate(exercice_count=Count('exercices'))
         # Les non-admins voient uniquement leurs caisses (membre) ou les caisses assignées (agent)
         if not self.request.user.is_superuser:
             user_caisses = get_user_caisses(self.request.user)
@@ -1127,11 +1127,25 @@ class MembreViewSet(viewsets.ModelViewSet):
         
         # Pour les non-admins, vérifier que la caisse appartient à l'utilisateur
         if not self.request.user.is_superuser:
-            caisse = serializer.validated_data.get('caisse')
             user_caisses = get_user_caisses(self.request.user)
+            caisse_id = serializer.validated_data.get('caisse_id')
+            caisse = None
             
-            # Si c'est un membre (une seule caisse), utiliser automatiquement sa caisse
-            if not AgentPermissions.is_agent(self.request.user):
+            if AgentPermissions.is_agent(self.request.user):
+                # Les agents peuvent choisir une caisse parmi les leurs
+                if caisse_id:
+                    try:
+                        caisse = user_caisses.get(id=caisse_id)
+                    except Caisse.DoesNotExist:
+                        raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
+                else:
+                    # Si aucune caisse n'est précisée et qu'il n'y en a qu'une, la prendre par défaut
+                    if user_caisses.count() == 1:
+                        caisse = user_caisses.first()
+                    else:
+                        raise ValidationError({'detail': 'Veuillez sélectionner une caisse valide.'})
+            else:
+                # Pour les membres simples, utiliser automatiquement leur caisse unique
                 caisse = get_user_caisse(self.request.user)
                 if not caisse:
                     raise ValidationError({'detail': 'Aucune caisse associée à votre compte.'})
@@ -1165,6 +1179,12 @@ class MembreViewSet(viewsets.ModelViewSet):
             
             # Permettre de changer la caisse seulement pour les agents (dans leurs caisses)
             new_caisse = serializer.validated_data.get('caisse', caisse)
+            new_caisse_id = serializer.validated_data.get('caisse_id')
+            if new_caisse_id:
+                try:
+                    new_caisse = Caisse.objects.get(id=new_caisse_id)
+                except Caisse.DoesNotExist:
+                    raise ValidationError({'detail': 'Caisse sélectionnée invalide.'})
             if AgentPermissions.is_agent(self.request.user) and new_caisse and new_caisse != caisse:
                 if new_caisse not in user_caisses:
                     raise ValidationError({'detail': 'Vous n\'avez pas accès à cette caisse.'})
@@ -2547,6 +2567,8 @@ def caisses_cards_view(request):
     caisses = Caisse.objects.select_related(
         'agent', 'village', 'canton', 'commune', 'prefecture', 'region',
         'presidente', 'secretaire', 'tresoriere'
+    ).annotate(
+        exercice_count=Count('exercices')
     ).order_by('-date_creation')
 
     # Préparer les données pour chaque caisse
@@ -2587,7 +2609,8 @@ def caisses_cards_view(request):
             'exercice_actuel': exercice_actuel,
             'responsables': responsables[:3],  # Limiter à 3
             'localisation': f"{caisse.village.nom}, {caisse.canton.nom}, {caisse.commune.nom}",
-            'agent_responsable': caisse.agent.nom_complet if caisse.agent else 'Non assigné'
+            'agent_responsable': caisse.agent.nom_complet if caisse.agent else 'Non assigné',
+            'exercice_count': caisse.exercice_count or 0,
         })
 
     context = {

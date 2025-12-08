@@ -83,6 +83,9 @@
                             <small class="opacity-75">
                                 <i class="fa fa-tag me-1"></i>{{ data.caisse.code }}
                             </small>
+                            <small class="d-block mt-1 text-white-50">
+                                <i class="fa fa-sync-alt me-1"></i>Cycle : {{ data.exercice_count }}
+                            </small>
                         </div>
                         <span class="badge bg-light text-dark fs-6">
                             {% if data.caisse.statut == 'ACTIVE' %}
